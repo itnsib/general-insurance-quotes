@@ -406,7 +406,7 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
   };
 
   const downloadComparison = (comparison: SavedComparison) => {
-    // Create HTML content
+    // Create HTML content with branding page first
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -415,7 +415,61 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${comparison.insuranceLine} - Insurance Comparison</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
+        .page:last-child { page-break-after: auto; }
+        
+        /* First Page - Branding */
+        .branding-page { 
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center;
+            min-height: 100vh;
+            padding: 40px;
+        }
+        .branding-page img { 
+            max-width: 90%; 
+            max-height: 80vh; 
+            width: auto; 
+            height: auto; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+            margin-bottom: 30px;
+        }
+        .branding-title {
+            font-size: 36px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .branding-subtitle {
+            font-size: 20px;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .branding-footer {
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .branding-footer h3 {
+            color: #2c3e50;
+            margin-top: 0;
+            font-size: 24px;
+        }
+        .branding-footer p {
+            color: #34495e;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        /* Second Page - Comparison Data */
+        .comparison-page { background: #f8f9fa; }
         .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
         .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
@@ -438,146 +492,161 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
         .advisor-comment { background: #FFC000; color: #333; padding: 15px; border-radius: 8px; margin-top: 20px; }
         .advisor-comment h4 { margin-top: 0; color: #333; }
         .summary { background: #e8f5e8; padding: 20px; border-radius: 8px; margin-top: 30px; }
-        .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 2px solid #4472C4; }
-        .footer img { max-width: 800px; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        @media print { body { margin: 0; } .container { box-shadow: none; } }
+        
+        @media print { 
+            body { margin: 0; } 
+            .page { margin: 0; padding: 20px; }
+            .container { box-shadow: none; } 
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
-        </div>
+    <!-- FIRST PAGE: NSIB Branding -->
+    <div class="page branding-page">
+        <div class="branding-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="branding-subtitle">Professional Insurance Solutions</div>
         
-        <div class="ref-date">
-            <span>Reference: ${comparison.referenceNumber}</span>
-            <span>Date: ${comparison.date.substring(0, 10)}</span>
-        </div>
-
-        <div class="customer-details">
-            <h3>Customer Information</h3>
-            <div class="details-grid">
-                <div class="detail-item">
-                    <div class="detail-label">Customer Name:</div>
-                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
-                </div>
-                ${comparison.address ? `
-                <div class="detail-item">
-                    <div class="detail-label">Address:</div>
-                    <div class="detail-value">${comparison.address}</div>
-                </div>` : ''}
-                ${comparison.businessActivity ? `
-                <div class="detail-item">
-                    <div class="detail-label">Business Activity:</div>
-                    <div class="detail-value">${comparison.businessActivity}</div>
-                </div>` : ''}
-                ${comparison.location ? `
-                <div class="detail-item">
-                    <div class="detail-label">Location/Premises:</div>
-                    <div class="detail-value">${comparison.location}</div>
-                </div>` : ''}
-                ${comparison.propertyLimit ? `
-                <div class="detail-item">
-                    <div class="detail-label">Property Limit:</div>
-                    <div class="detail-value">${comparison.propertyLimit}</div>
-                </div>` : ''}
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 80px;">S.No.</th>
-                    <th style="width: 200px;">Particulars</th>
-                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td class="sno">1</td>
-                    <td class="particulars">Scope of Cover</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">2</td>
-                    <td class="particulars">Geographical Limits</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">3</td>
-                    <td class="particulars">Conditions/Extensions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            <ul class="conditions-list">
-                                ${quote.conditions.map(condition => `<li>• ${condition}</li>`).join('')}
-                            </ul>
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">4</td>
-                    <td class="particulars">Main Exclusions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            <ul class="exclusions-list">
-                                ${quote.exclusions.map(exclusion => `<li>• ${exclusion}</li>`).join('')}
-                            </ul>
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">5</td>
-                    <td class="particulars">Deductible</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">6</td>
-                    <td class="particulars">Premium Rate</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">7</td>
-                    <td class="particulars">Premium (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">8</td>
-                    <td class="particulars">Policy Fee (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">9</td>
-                    <td class="particulars">VAT (5%)</td>
-                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
-                </tr>
-                <tr style="background: #f0f8ff; font-weight: bold;">
-                    <td class="sno">10</td>
-                    <td class="particulars">Total (AED)</td>
-                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
-                </tr>
-            </tbody>
-        </table>
-
-        ${comparison.advisorComment ? `
-        <div class="advisor-comment">
-            <h4>Advisor Comment:</h4>
-            <p>${comparison.advisorComment}</p>
-        </div>` : ''}
-
-        <div class="summary">
-            <h3>Summary</h3>
+        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" />
+        
+        <div class="branding-footer">
+            <h3>Insurance Comparison Report</h3>
+            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
             <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Customer:</strong> ${comparison.customerName}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
             <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
         </div>
+    </div>
 
-        <div class="footer">
-            <h3>NSIB General Insurance System</h3>
-            <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB General Insurance System" />
-            <p style="margin-top: 15px; color: #666; font-size: 12px;">
-                Professional insurance quote comparison system • Generated: ${new Date().toLocaleString('en-GB')}
-            </p>
+    <!-- SECOND PAGE: Comparison Details -->
+    <div class="page comparison-page">
+        <div class="container">
+            <div class="header">
+                <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
+            </div>
+            
+            <div class="ref-date">
+                <span>Reference: ${comparison.referenceNumber}</span>
+                <span>Date: ${comparison.date.substring(0, 10)}</span>
+            </div>
+
+            <div class="customer-details">
+                <h3>Customer Information</h3>
+                <div class="details-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Customer Name:</div>
+                        <div class="detail-value">${comparison.customerName || 'N/A'}</div>
+                    </div>
+                    ${comparison.address ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Address:</div>
+                        <div class="detail-value">${comparison.address}</div>
+                    </div>` : ''}
+                    ${comparison.businessActivity ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Business Activity:</div>
+                        <div class="detail-value">${comparison.businessActivity}</div>
+                    </div>` : ''}
+                    ${comparison.location ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Location/Premises:</div>
+                        <div class="detail-value">${comparison.location}</div>
+                    </div>` : ''}
+                    ${comparison.propertyLimit ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Property Limit:</div>
+                        <div class="detail-value">${comparison.propertyLimit}</div>
+                    </div>` : ''}
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">S.No.</th>
+                        <th style="width: 200px;">Particulars</th>
+                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="sno">1</td>
+                        <td class="particulars">Scope of Cover</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">2</td>
+                        <td class="particulars">Geographical Limits</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">3</td>
+                        <td class="particulars">Conditions/Extensions</td>
+                        ${comparison.quotes.map(quote => `
+                            <td>
+                                <ul class="conditions-list">
+                                    ${quote.conditions.map(condition => `<li>• ${condition}</li>`).join('')}
+                                </ul>
+                            </td>
+                        `).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">4</td>
+                        <td class="particulars">Main Exclusions</td>
+                        ${comparison.quotes.map(quote => `
+                            <td>
+                                <ul class="exclusions-list">
+                                    ${quote.exclusions.map(exclusion => `<li>• ${exclusion}</li>`).join('')}
+                                </ul>
+                            </td>
+                        `).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">5</td>
+                        <td class="particulars">Deductible</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">6</td>
+                        <td class="particulars">Premium Rate</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">7</td>
+                        <td class="particulars">Premium (AED)</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">8</td>
+                        <td class="particulars">Policy Fee (AED)</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">9</td>
+                        <td class="particulars">VAT (5%)</td>
+                        ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
+                    </tr>
+                    <tr style="background: #f0f8ff; font-weight: bold;">
+                        <td class="sno">10</td>
+                        <td class="particulars">Total (AED)</td>
+                        ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
+                    </tr>
+                </tbody>
+            </table>
+
+            ${comparison.advisorComment ? `
+            <div class="advisor-comment">
+                <h4>Advisor Comment:</h4>
+                <p>${comparison.advisorComment}</p>
+            </div>` : ''}
+
+            <div class="summary">
+                <h3>Summary</h3>
+                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+            </div>
         </div>
     </div>
 </body>
