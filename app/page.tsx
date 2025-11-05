@@ -973,7 +973,45 @@ function SavedHistoryPage() {
 
 // ============ MAIN APP ============
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'generator' | 'history'>('generator');
+  const [currentPage, setCurrentPage] = useState<'homepage' | 'generator' | 'history'>('homepage');
+
+  // Homepage Component
+  const HomePage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-5">
+      <div className="max-w-4xl mx-auto text-center">
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          <img 
+            src="https://i.imgur.com/Qgh7Try.jpeg" 
+            alt="NSIB General Insurance System" 
+            className="w-full max-w-3xl mx-auto rounded-lg shadow-lg mb-8"
+            style={{ maxHeight: '80vh', objectFit: 'contain' }}
+          />
+          
+          <div className="space-y-6">
+            <h1 className="text-4xl font-bold text-gray-800 mb-4">
+              Welcome to NSIB General Insurance System
+            </h1>
+            
+            <p className="text-lg text-gray-600 mb-8">
+              Professional insurance quote comparison system with real-time data from multiple providers
+            </p>
+            
+            <button 
+              onClick={() => setCurrentPage('generator')}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-12 py-4 rounded-xl text-xl font-bold hover:from-blue-700 hover:to-indigo-700 transform hover:scale-105 transition-all duration-200 shadow-xl"
+            >
+              🚀 Enter Quote System
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Show homepage first
+  if (currentPage === 'homepage') {
+    return <HomePage />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-5">
@@ -982,6 +1020,12 @@ export default function App() {
           <h1 className="text-4xl font-bold text-gray-800 mb-4">NSIB General Insurance Quote System</h1>
           
           <div className="flex justify-center gap-4">
+            <button 
+              onClick={() => setCurrentPage('homepage')} 
+              className="px-6 py-2 rounded-lg font-bold transition bg-gray-500 text-white hover:bg-gray-600"
+            >
+              🏠 Home
+            </button>
             <button 
               onClick={() => setCurrentPage('generator')} 
               className={`px-8 py-3 rounded-lg font-bold transition ${currentPage === 'generator' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
