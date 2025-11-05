@@ -258,7 +258,7 @@ const generateReferenceNumber = () => {
 };
 
 // ============ QUOTE GENERATOR PAGE ============
-function QuoteGeneratorPage() {
+function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: SavedComparison) => void }) {
   const [insuranceLine, setInsuranceLine] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [address, setAddress] = useState('');
@@ -378,13 +378,18 @@ function QuoteGeneratorPage() {
     history.unshift(comparison);
     localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
 
-    // Generate Excel file
-    await downloadComparison(comparison);
+    // Generate HTML file
+    downloadComparison(comparison);
 
-    alert(`✅ Comparison saved successfully!\nReference: ${comparison.referenceNumber}`);
-    
     // Reset form
     resetForm();
+
+    // Trigger completion page with your image
+    if (onSaveComplete) {
+      onSaveComplete(comparison);
+    } else {
+      alert(`✅ Comparison saved successfully!\nReference: ${comparison.referenceNumber}`);
+    }
   };
 
   const resetForm = () => {
@@ -400,104 +405,193 @@ function QuoteGeneratorPage() {
     setSelectedCompanies([]);
   };
 
-  const downloadComparison = async (comparison: SavedComparison) => {
-    // Create Excel file using openpyxl
-    const code = `
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-import json
+  const downloadComparison = (comparison: SavedComparison) => {
+    // Create HTML content
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${comparison.insuranceLine} - Insurance Comparison</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+        .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
+        .ref-date { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; }
+        .customer-details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; }
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .detail-item { }
+        .detail-label { font-weight: bold; color: #555; }
+        .detail-value { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { background: #4472C4; color: white; padding: 15px 10px; text-align: center; border: 1px solid #ddd; font-weight: bold; }
+        td { padding: 12px 10px; border: 1px solid #ddd; vertical-align: top; }
+        .sno { text-align: center; font-weight: bold; background: #f8f9fa; }
+        .particulars { font-weight: bold; background: #f8f9fa; }
+        .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
+        .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .conditions-list, .exclusions-list { font-size: 12px; line-height: 1.4; }
+        .conditions-list li, .exclusions-list li { margin-bottom: 3px; }
+        .advisor-comment { background: #FFC000; color: #333; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .advisor-comment h4 { margin-top: 0; color: #333; }
+        .summary { background: #e8f5e8; padding: 20px; border-radius: 8px; margin-top: 30px; }
+        .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 2px solid #4472C4; }
+        .footer img { max-width: 800px; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        @media print { body { margin: 0; } .container { box-shadow: none; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
+        </div>
+        
+        <div class="ref-date">
+            <span>Reference: ${comparison.referenceNumber}</span>
+            <span>Date: ${comparison.date.substring(0, 10)}</span>
+        </div>
 
-# Load comparison data
-comparison = json.loads('''${JSON.stringify(comparison).replace(/'/g, "\\'")}''')
+        <div class="customer-details">
+            <h3>Customer Information</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Customer Name:</div>
+                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
+                </div>
+                ${comparison.address ? `
+                <div class="detail-item">
+                    <div class="detail-label">Address:</div>
+                    <div class="detail-value">${comparison.address}</div>
+                </div>` : ''}
+                ${comparison.businessActivity ? `
+                <div class="detail-item">
+                    <div class="detail-label">Business Activity:</div>
+                    <div class="detail-value">${comparison.businessActivity}</div>
+                </div>` : ''}
+                ${comparison.location ? `
+                <div class="detail-item">
+                    <div class="detail-label">Location/Premises:</div>
+                    <div class="detail-value">${comparison.location}</div>
+                </div>` : ''}
+                ${comparison.propertyLimit ? `
+                <div class="detail-item">
+                    <div class="detail-label">Property Limit:</div>
+                    <div class="detail-value">${comparison.propertyLimit}</div>
+                </div>` : ''}
+            </div>
+        </div>
 
-# Create workbook
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.title = "Comparison"
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 80px;">S.No.</th>
+                    <th style="width: 200px;">Particulars</th>
+                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="sno">1</td>
+                    <td class="particulars">Scope of Cover</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">2</td>
+                    <td class="particulars">Geographical Limits</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">3</td>
+                    <td class="particulars">Conditions/Extensions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            <ul class="conditions-list">
+                                ${quote.conditions.map(condition => `<li>• ${condition}</li>`).join('')}
+                            </ul>
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">4</td>
+                    <td class="particulars">Main Exclusions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            <ul class="exclusions-list">
+                                ${quote.exclusions.map(exclusion => `<li>• ${exclusion}</li>`).join('')}
+                            </ul>
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">5</td>
+                    <td class="particulars">Deductible</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">6</td>
+                    <td class="particulars">Premium Rate</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">7</td>
+                    <td class="particulars">Premium (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">8</td>
+                    <td class="particulars">Policy Fee (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">9</td>
+                    <td class="particulars">VAT (5%)</td>
+                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
+                </tr>
+                <tr style="background: #f0f8ff; font-weight: bold;">
+                    <td class="sno">10</td>
+                    <td class="particulars">Total (AED)</td>
+                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
+                </tr>
+            </tbody>
+        </table>
 
-# Styles
-header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-header_font = Font(bold=True, color="FFFFFF", size=12)
-subheader_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-subheader_font = Font(bold=True, size=11)
-border = Border(
-    left=Side(style='thin'),
-    right=Side(style='thin'),
-    top=Side(style='thin'),
-    bottom=Side(style='thin')
-)
+        ${comparison.advisorComment ? `
+        <div class="advisor-comment">
+            <h4>Advisor Comment:</h4>
+            <p>${comparison.advisorComment}</p>
+        </div>` : ''}
 
-# Title
-ws.merge_cells('A1:F1')
-ws['A1'] = f"{comparison['insuranceLine']} - Insurance Comparison"
-ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
-ws['A1'].fill = PatternFill(start_color="203864", end_color="203864", fill_type="solid")
-ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-ws.row_dimensions[1].height = 25
+        <div class="summary">
+            <h3>Summary</h3>
+            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+        </div>
 
-# Reference and Date
-row = 2
-ws[f'A{row}'] = f"Reference: {comparison['referenceNumber']}"
-ws[f'A{row}'].font = Font(bold=True, size=10)
-ws[f'D{row}'] = f"Date: {comparison['date'][:10]}"
-ws[f'D{row}'].font = Font(bold=True, size=10)
-row += 1
+        <div class="footer">
+            <h3>NSIB General Insurance System</h3>
+            <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB General Insurance System" />
+            <p style="margin-top: 15px; color: #666; font-size: 12px;">
+                Professional insurance quote comparison system • Generated: ${new Date().toLocaleString('en-GB')}
+            </p>
+        </div>
+    </div>
+</body>
+</html>`;
 
-# Customer Details
-ws[f'A{row}'] = "Customer Name:"
-ws[f'A{row}'].font = subheader_font
-ws[f'B{row}'] = comparison.get('customerName', '')
-row += 1
-
-if comparison.get('address'):
-    ws[f'A{row}'] = "Address:"
-    ws[f'A{row}'].font = subheader_font
-    ws[f'B{row}'] = comparison['address']
-    row += 1
-
-if comparison.get('businessActivity'):
-    ws[f'A{row}'] = "Business Activity:"
-    ws[f'A{row}'].font = subheader_font
-    ws[f'B{row}'] = comparison['businessActivity']
-    row += 1
-
-if comparison.get('location'):
-    ws[f'A{row}'] = "Location/Premises:"
-    ws[f'A{row}'].font = subheader_font
-    ws[f'B{row}'] = comparison['location']
-    row += 1
-
-if comparison.get('propertyLimit'):
-    ws[f'A{row}'] = "Property Limit:"
-    ws[f'A{row}'].font = subheader_font
-    ws[f'B{row}'] = comparison['propertyLimit']
-    row += 1
-
-row += 1
-
-# Headers
-headers = ['S.No.', 'Particulars']
-for quote in comparison['quotes']:
-    headers.append(quote['company'])
-
-col = 1
-for header in headers:
-    cell = ws.cell(row, col, header)
-    cell.font = header_font
-    cell.fill = header_fill
-    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    cell.border = border
-    col += 1
-
-header_row = row
-row += 1
-
-# Quote details
-details = [
-    ('Scope of Cover', 'scopeOfCover'),
-    ('Geographical Limits', 'geographicalLimits'),
-    ('Deductible', 'deductible'),
-    ('Premium Rate', 'premiumRate'),
+    // Create and download HTML file
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `insurance_comparison_${comparison.referenceNumber}.html`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
     ('Premium (AED)', 'premium'),
     ('Policy Fee (AED)', 'policyFee'),
     ('VAT 5% (AED)', 'vat'),
@@ -973,44 +1067,78 @@ function SavedHistoryPage() {
 
 // ============ MAIN APP ============
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'homepage' | 'generator' | 'history'>('homepage');
+  const [currentPage, setCurrentPage] = useState<'generator' | 'history' | 'completion'>('generator');
+  const [completedComparison, setCompletedComparison] = useState<SavedComparison | null>(null);
 
-  // Homepage Component
-  const HomePage = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-5">
+  // Completion Page Component (shows your image after saving quotes)
+  const CompletionPage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center p-5">
       <div className="max-w-4xl mx-auto text-center">
         <div className="bg-white rounded-2xl shadow-2xl p-8">
+          {/* Success Message */}
+          <div className="mb-8">
+            <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-white text-3xl">✓</span>
+            </div>
+            <h1 className="text-4xl font-bold text-gray-800 mb-4">
+              Quote Comparison Complete!
+            </h1>
+            <p className="text-lg text-gray-600 mb-6">
+              Your insurance comparison has been generated and saved successfully.
+            </p>
+            {completedComparison && (
+              <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                <p className="font-bold text-blue-800">Reference: {completedComparison.referenceNumber}</p>
+                <p className="text-blue-600">{completedComparison.quotes.length} companies compared</p>
+                <p className="text-blue-600">Generated: {new Date().toLocaleDateString('en-GB')}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Your Image */}
           <img 
             src="https://i.imgur.com/Qgh7Try.jpeg" 
             alt="NSIB General Insurance System" 
             className="w-full max-w-3xl mx-auto rounded-lg shadow-lg mb-8"
-            style={{ maxHeight: '80vh', objectFit: 'contain' }}
+            style={{ maxHeight: '60vh', objectFit: 'contain' }}
           />
           
-          <div className="space-y-6">
-            <h1 className="text-4xl font-bold text-gray-800 mb-4">
-              Welcome to NSIB General Insurance System
-            </h1>
+          <div className="space-y-4">
+            <h2 className="text-2xl font-bold text-gray-800">
+              NSIB General Insurance System
+            </h2>
             
-            <p className="text-lg text-gray-600 mb-8">
-              Professional insurance quote comparison system with real-time data from multiple providers
+            <p className="text-gray-600">
+              Professional insurance quote comparison completed successfully
             </p>
             
-            <button 
-              onClick={() => setCurrentPage('generator')}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-12 py-4 rounded-xl text-xl font-bold hover:from-blue-700 hover:to-indigo-700 transform hover:scale-105 transition-all duration-200 shadow-xl"
-            >
-              🚀 Enter Quote System
-            </button>
+            <div className="flex gap-4 justify-center mt-8">
+              <button 
+                onClick={() => {
+                  setCurrentPage('generator');
+                  setCompletedComparison(null);
+                }}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transform hover:scale-105 transition-all duration-200 shadow-lg"
+              >
+                🔄 New Quote
+              </button>
+              
+              <button 
+                onClick={() => setCurrentPage('history')}
+                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-8 py-3 rounded-xl font-bold hover:from-gray-700 hover:to-gray-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
+              >
+                📁 View History
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 
-  // Show homepage first
-  if (currentPage === 'homepage') {
-    return <HomePage />;
+  // Show completion page with your image after saving quotes
+  if (currentPage === 'completion') {
+    return <CompletionPage />;
   }
 
   return (
@@ -1020,12 +1148,6 @@ export default function App() {
           <h1 className="text-4xl font-bold text-gray-800 mb-4">NSIB General Insurance Quote System</h1>
           
           <div className="flex justify-center gap-4">
-            <button 
-              onClick={() => setCurrentPage('homepage')} 
-              className="px-6 py-2 rounded-lg font-bold transition bg-gray-500 text-white hover:bg-gray-600"
-            >
-              🏠 Home
-            </button>
             <button 
               onClick={() => setCurrentPage('generator')} 
               className={`px-8 py-3 rounded-lg font-bold transition ${currentPage === 'generator' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
@@ -1041,7 +1163,16 @@ export default function App() {
           </div>
         </div>
 
-        {currentPage === 'generator' ? <QuoteGeneratorPage /> : <SavedHistoryPage />}
+        {currentPage === 'generator' ? (
+          <QuoteGeneratorPage 
+            onSaveComplete={(comparison) => {
+              setCompletedComparison(comparison);
+              setCurrentPage('completion');
+            }}
+          />
+        ) : (
+          <SavedHistoryPage />
+        )}
       </div>
     </div>
   );
