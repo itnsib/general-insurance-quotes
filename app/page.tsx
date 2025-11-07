@@ -258,7 +258,15 @@ const generateReferenceNumber = () => {
 };
 
 // ============ QUOTE GENERATOR PAGE ============
-function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: SavedComparison) => void }) {
+function QuoteGeneratorPage({ 
+  onSaveComplete, 
+  editComparison, 
+  onCancelEdit 
+}: { 
+  onSaveComplete?: (comparison: SavedComparison) => void;
+  editComparison?: SavedComparison | null;
+  onCancelEdit?: () => void;
+}) {
   const [insuranceLine, setInsuranceLine] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [address, setAddress] = useState('');
@@ -275,6 +283,17 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
   const [customCompanies, setCustomCompanies] = useState<string[]>([]);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [showAddCompany, setShowAddCompany] = useState(false);
+  
+  // Edit functionality state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
+
+  // Auto-load comparison when editComparison prop changes
+  useEffect(() => {
+    if (editComparison) {
+      loadComparisonForEdit(editComparison);
+    }
+  }, [editComparison]);
 
   // Update available companies when insurance line changes
   useEffect(() => {
@@ -308,6 +327,50 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
   const removeCustomCompany = (companyName: string) => {
     setCustomCompanies(prev => prev.filter(c => c !== companyName));
     setSelectedCompanies(prev => prev.filter(c => c !== companyName));
+  };
+
+  // Load saved comparison for editing
+  const loadComparisonForEdit = (comparison: SavedComparison) => {
+    setIsEditing(true);
+    setEditingComparison(comparison);
+    
+    // Load all the data back into the form
+    const insuranceLineValue = INSURANCE_LINES.find(line => line.label === comparison.insuranceLine)?.value || '';
+    setInsuranceLine(insuranceLineValue);
+    setCustomerName(comparison.customerName);
+    setAddress(comparison.address || '');
+    setBusinessActivity(comparison.businessActivity || '');
+    setLocation(comparison.location || '');
+    setPropertyLimit(comparison.propertyLimit || '');
+    setAdvisorComment(comparison.advisorComment || '');
+    
+    // Load quotes and companies
+    const companyNames = comparison.quotes.map(q => q.company);
+    setSelectedCompanies(companyNames);
+    setQuotes(comparison.quotes);
+    
+    // Add any custom companies that aren't in defaults
+    const defaultCompanies = getInsuranceCompanies(insuranceLineValue);
+    const customCompaniesList = companyNames.filter(name => !defaultCompanies.includes(name));
+    setCustomCompanies(prev => {
+      const newCustom = [...prev];
+      customCompaniesList.forEach(company => {
+        if (!newCustom.includes(company)) {
+          newCustom.push(company);
+        }
+      });
+      return newCustom;
+    });
+  };
+
+  // Cancel editing and reset
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditingComparison(null);
+    resetForm();
+    if (onCancelEdit) {
+      onCancelEdit();
+    }
   };
 
   const createEmptyQuote = (company: string): Quote => {
@@ -417,9 +480,9 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
       return;
     }
 
-    const comparison: SavedComparison = {
-      id: generateId(),
-      date: new Date().toISOString(),
+    const comparisonData = {
+      id: isEditing && editingComparison ? editingComparison.id : generateId(),
+      date: isEditing && editingComparison ? editingComparison.date : new Date().toISOString(),
       insuranceLine: INSURANCE_LINES.find(il => il.value === insuranceLine)?.label || insuranceLine,
       customerName,
       address,
@@ -428,25 +491,39 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
       propertyLimit,
       quotes,
       advisorComment,
-      referenceNumber: generateReferenceNumber()
+      referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
 
     // Save to localStorage
     const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-    history.unshift(comparison);
-    localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+    
+    if (isEditing && editingComparison) {
+      // Update existing comparison
+      const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
+      if (index !== -1) {
+        history[index] = comparisonData;
+        localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+      }
+    } else {
+      // Add new comparison
+      history.unshift(comparisonData);
+      localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+    }
 
     // Generate HTML file
-    downloadComparison(comparison);
+    downloadComparison(comparisonData);
 
-    // Reset form
+    // Reset form and edit state
+    setIsEditing(false);
+    setEditingComparison(null);
     resetForm();
 
     // Trigger completion page with your image
     if (onSaveComplete) {
-      onSaveComplete(comparison);
+      onSaveComplete(comparisonData);
     } else {
-      alert(`✅ Comparison saved successfully!\nReference: ${comparison.referenceNumber}`);
+      const action = isEditing ? 'updated' : 'saved';
+      alert(`✅ Comparison ${action} successfully!\nReference: ${comparisonData.referenceNumber}`);
     }
   };
 
@@ -727,7 +804,28 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
   return (
     <div className="grid grid-cols-1 gap-5">
       <div className="bg-white rounded-xl p-6 shadow-2xl">
-        <h2 className="text-2xl font-bold mb-4 text-gray-800">General Insurance Quote Generator</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold text-gray-800">
+            {isEditing ? '✏️ Edit Insurance Quote' : 'General Insurance Quote Generator'}
+          </h2>
+          {isEditing && (
+            <button
+              onClick={cancelEdit}
+              className="bg-red-600 text-white px-4 py-2 rounded font-bold hover:bg-red-700 transition"
+            >
+              Cancel Edit
+            </button>
+          )}
+        </div>
+
+        {isEditing && editingComparison && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
+            <p className="text-sm font-bold text-yellow-800">
+              📝 Editing: {editingComparison.referenceNumber} | {editingComparison.customerName} | {editingComparison.insuranceLine}
+            </p>
+            <p className="text-xs text-yellow-600">Make your changes and click "Save Changes" to update this comparison.</p>
+          </div>
+        )}
         
         {/* Insurance Line Selection */}
         <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
@@ -1100,7 +1198,7 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
                 onClick={saveComparison}
                 className="flex-1 bg-green-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-green-700 transition shadow-lg"
               >
-                💾 Save & Download Comparison
+                {isEditing ? '💾 Save Changes & Download' : '💾 Save & Download Comparison'}
               </button>
               <button
                 onClick={resetForm}
@@ -1117,7 +1215,7 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
 }
 
 // ============ SAVED HISTORY PAGE ============
-function SavedHistoryPage() {
+function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison: SavedComparison) => void }) {
   const [history, setHistory] = useState<SavedComparison[]>([]);
   const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
 
@@ -1187,8 +1285,15 @@ function SavedHistoryPage() {
                 
                 <div className="flex gap-2">
                   <button 
+                    onClick={() => onEditComparison && onEditComparison(comparison)} 
+                    className="bg-orange-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-orange-700 transition"
+                    title="Edit this comparison"
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button 
                     onClick={() => downloadComparisonFromHistory(comparison)} 
-                    className="flex-1 bg-purple-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-purple-700 transition"
+                    className="bg-purple-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-purple-700 transition"
                   >
                     📥 Download
                   </button>
@@ -1212,6 +1317,13 @@ function SavedHistoryPage() {
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'generator' | 'history' | 'completion'>('generator');
   const [completedComparison, setCompletedComparison] = useState<SavedComparison | null>(null);
+  const [comparisonToEdit, setComparisonToEdit] = useState<SavedComparison | null>(null);
+
+  // Handle editing a comparison from history
+  const handleEditComparison = (comparison: SavedComparison) => {
+    setComparisonToEdit(comparison);
+    setCurrentPage('generator');
+  };
 
   // Completion Page Component (shows your image after saving quotes)
   const CompletionPage = () => (
@@ -1311,10 +1423,15 @@ export default function App() {
             onSaveComplete={(comparison) => {
               setCompletedComparison(comparison);
               setCurrentPage('completion');
+              setComparisonToEdit(null); // Clear edit state after saving
             }}
+            editComparison={comparisonToEdit}
+            onCancelEdit={() => setComparisonToEdit(null)}
           />
         ) : (
-          <SavedHistoryPage />
+          <SavedHistoryPage 
+            onEditComparison={handleEditComparison}
+          />
         )}
       </div>
     </div>
