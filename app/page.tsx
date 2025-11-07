@@ -270,15 +270,21 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  
+  // New state for dynamic companies and editable content
+  const [customCompanies, setCustomCompanies] = useState<string[]>([]);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [showAddCompany, setShowAddCompany] = useState(false);
 
   // Update available companies when insurance line changes
   useEffect(() => {
     if (insuranceLine) {
-      const companies = getInsuranceCompanies(insuranceLine);
-      setAvailableCompanies(companies);
-      setSelectedCompanies(companies); // Select all by default
+      const defaultCompanies = getInsuranceCompanies(insuranceLine);
+      const allCompanies = [...defaultCompanies, ...customCompanies];
+      setAvailableCompanies(allCompanies);
+      setSelectedCompanies(defaultCompanies); // Start with default companies selected
     }
-  }, [insuranceLine]);
+  }, [insuranceLine, customCompanies]);
 
   // Initialize quotes when selected companies change
   useEffect(() => {
@@ -287,6 +293,22 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
       setQuotes(newQuotes);
     }
   }, [selectedCompanies]);
+
+  // Add new custom company
+  const addCustomCompany = () => {
+    if (newCompanyName.trim() && !availableCompanies.includes(newCompanyName.trim())) {
+      const companyName = newCompanyName.trim();
+      setCustomCompanies(prev => [...prev, companyName]);
+      setNewCompanyName('');
+      setShowAddCompany(false);
+    }
+  };
+
+  // Remove custom company
+  const removeCustomCompany = (companyName: string) => {
+    setCustomCompanies(prev => prev.filter(c => c !== companyName));
+    setSelectedCompanies(prev => prev.filter(c => c !== companyName));
+  };
 
   const createEmptyQuote = (company: string): Quote => {
     const defaults = getLineDefaults(insuranceLine);
@@ -340,6 +362,42 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
       newQuotes[quoteIndex].conditions = [...currentConditions, condition];
     }
     
+    setQuotes(newQuotes);
+  };
+
+  // Add custom condition
+  const addCustomCondition = (quoteIndex: number, newCondition: string) => {
+    if (newCondition.trim()) {
+      const newQuotes = [...quotes];
+      if (!newQuotes[quoteIndex].conditions.includes(newCondition.trim())) {
+        newQuotes[quoteIndex].conditions = [...newQuotes[quoteIndex].conditions, newCondition.trim()];
+        setQuotes(newQuotes);
+      }
+    }
+  };
+
+  // Remove condition
+  const removeCondition = (quoteIndex: number, condition: string) => {
+    const newQuotes = [...quotes];
+    newQuotes[quoteIndex].conditions = newQuotes[quoteIndex].conditions.filter(c => c !== condition);
+    setQuotes(newQuotes);
+  };
+
+  // Add custom exclusion
+  const addCustomExclusion = (quoteIndex: number, newExclusion: string) => {
+    if (newExclusion.trim()) {
+      const newQuotes = [...quotes];
+      if (!newQuotes[quoteIndex].exclusions.includes(newExclusion.trim())) {
+        newQuotes[quoteIndex].exclusions = [...newQuotes[quoteIndex].exclusions, newExclusion.trim()];
+        setQuotes(newQuotes);
+      }
+    }
+  };
+
+  // Remove exclusion
+  const removeExclusion = (quoteIndex: number, exclusion: string) => {
+    const newQuotes = [...quotes];
+    newQuotes[quoteIndex].exclusions = newQuotes[quoteIndex].exclusions.filter(e => e !== exclusion);
     setQuotes(newQuotes);
   };
 
@@ -403,6 +461,10 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
     setQuotes([]);
     setAvailableCompanies([]);
     setSelectedCompanies([]);
+    // Keep custom companies for future use unless explicitly cleared
+    // setCustomCompanies([]);
+    setNewCompanyName('');
+    setShowAddCompany(false);
   };
 
   const downloadComparison = (comparison: SavedComparison) => {
@@ -751,21 +813,80 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
             {/* Company Selection */}
             {availableCompanies.length > 0 && (
               <div className="mb-6 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
-                <h3 className="text-lg font-bold mb-3 text-gray-800">Select Insurance Companies</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {availableCompanies.map(company => (
-                    <label key={company} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedCompanies.includes(company)}
-                        onChange={() => handleCompanyToggle(company)}
-                        className="w-5 h-5"
-                      />
-                      <span className="text-sm font-semibold text-gray-800">{company}</span>
-                    </label>
-                  ))}
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg font-bold text-gray-800">Select Insurance Companies</h3>
+                  <button
+                    onClick={() => setShowAddCompany(!showAddCompany)}
+                    className="bg-green-600 text-white px-3 py-1 rounded text-sm font-bold hover:bg-green-700 transition"
+                  >
+                    + Add Company
+                  </button>
                 </div>
-                <p className="text-xs text-gray-600 mt-2">✓ {selectedCompanies.length} of {availableCompanies.length} companies selected • Select/deselect to customize comparison</p>
+
+                {/* Add Custom Company */}
+                {showAddCompany && (
+                  <div className="mb-4 p-3 bg-white rounded border border-green-300">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter company name"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        className="flex-1 p-2 border border-gray-300 rounded text-sm"
+                        onKeyPress={(e) => e.key === 'Enter' && addCustomCompany()}
+                      />
+                      <button
+                        onClick={addCustomCompany}
+                        className="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => { setShowAddCompany(false); setNewCompanyName(''); }}
+                        className="bg-gray-500 text-white px-3 py-2 rounded text-sm hover:bg-gray-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {availableCompanies.map(company => {
+                    const isDefault = getInsuranceCompanies(insuranceLine).includes(company);
+                    const isCustom = customCompanies.includes(company);
+                    
+                    return (
+                      <div key={company} className={`flex items-center gap-2 p-2 rounded ${isDefault ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
+                        <label className="flex items-center gap-2 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedCompanies.includes(company)}
+                            onChange={() => handleCompanyToggle(company)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-sm font-semibold text-gray-800">{company}</span>
+                          {isDefault && <span className="text-xs bg-blue-500 text-white px-1 rounded">Default</span>}
+                          {isCustom && <span className="text-xs bg-green-500 text-white px-1 rounded">Custom</span>}
+                        </label>
+                        {isCustom && (
+                          <button
+                            onClick={() => removeCustomCompany(company)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                            title="Remove custom company"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                  ✓ {selectedCompanies.length} of {availableCompanies.length} companies selected • 
+                  {customCompanies.length > 0 && ` ${customCompanies.length} custom companies added • `}
+                  Select/deselect to customize comparison
+                </p>
               </div>
             )}
 
@@ -812,30 +933,93 @@ function QuoteGeneratorPage({ onSaveComplete }: { onSaveComplete?: (comparison: 
 
                         <div>
                           <label className="block text-xs font-bold mb-1 text-gray-800">Conditions/Extensions</label>
-                          <div className="grid grid-cols-1 gap-2 bg-white p-2 rounded border max-h-40 overflow-y-auto">
-                            {getLineDefaults(insuranceLine).conditions.map((condition, condIdx) => (
-                              <label key={condIdx} className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={quote.conditions.includes(condition)}
-                                  onChange={() => toggleCondition(idx, condition)}
-                                />
-                                <span>{condition}</span>
-                              </label>
-                            ))}
+                          <div className="bg-white p-2 rounded border max-h-48 overflow-y-auto">
+                            {/* Default conditions */}
+                            <div className="mb-2">
+                              <p className="text-xs font-bold text-blue-600 mb-1">Default Conditions:</p>
+                              {getLineDefaults(insuranceLine).conditions.map((condition, condIdx) => (
+                                <label key={condIdx} className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer mb-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={quote.conditions.includes(condition)}
+                                    onChange={() => toggleCondition(idx, condition)}
+                                  />
+                                  <span className="flex-1">{condition}</span>
+                                </label>
+                              ))}
+                            </div>
+                            
+                            {/* Custom conditions */}
+                            {quote.conditions.filter(c => !getLineDefaults(insuranceLine).conditions.includes(c)).length > 0 && (
+                              <div className="mb-2 border-t pt-2">
+                                <p className="text-xs font-bold text-green-600 mb-1">Custom Conditions:</p>
+                                {quote.conditions.filter(c => !getLineDefaults(insuranceLine).conditions.includes(c)).map((condition, condIdx) => (
+                                  <div key={condIdx} className="flex items-center gap-2 text-xs text-gray-800 mb-1 bg-green-50 p-1 rounded">
+                                    <span className="flex-1">• {condition}</span>
+                                    <button
+                                      onClick={() => removeCondition(idx, condition)}
+                                      className="text-red-600 hover:text-red-800"
+                                      title="Remove condition"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Add custom condition */}
+                            <div className="border-t pt-2">
+                              <input
+                                type="text"
+                                placeholder="Add custom condition..."
+                                className="w-full p-1 border border-gray-300 rounded text-xs"
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    addCustomCondition(idx, e.currentTarget.value);
+                                    e.currentTarget.value = '';
+                                  }
+                                }}
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Press Enter to add</p>
+                            </div>
                           </div>
                           <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions selected</p>
                         </div>
 
                         <div>
                           <label className="block text-xs font-bold mb-1 text-gray-800">Main Exclusions</label>
-                          <div className="bg-red-50 p-2 rounded border border-red-200 max-h-32 overflow-y-auto">
-                            <div className="text-xs text-gray-700">
-                              {quote.exclusions.map((exclusion, exIdx) => (
-                                <div key={exIdx} className="mb-1">• {exclusion}</div>
-                              ))}
+                          <div className="bg-red-50 p-2 rounded border border-red-200 max-h-48 overflow-y-auto">
+                            {quote.exclusions.map((exclusion, exIdx) => (
+                              <div key={exIdx} className="flex items-center gap-2 mb-1 text-xs text-gray-700">
+                                <span className="flex-1">• {exclusion}</span>
+                                <button
+                                  onClick={() => removeExclusion(idx, exclusion)}
+                                  className="text-red-600 hover:text-red-800"
+                                  title="Remove exclusion"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            
+                            {/* Add custom exclusion */}
+                            <div className="border-t border-red-200 pt-2">
+                              <input
+                                type="text"
+                                placeholder="Add custom exclusion..."
+                                className="w-full p-1 border border-gray-300 rounded text-xs"
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    addCustomExclusion(idx, e.currentTarget.value);
+                                    e.currentTarget.value = '';
+                                  }
+                                }}
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Press Enter to add</p>
                             </div>
                           </div>
+                          <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions listed</p>
                         </div>
 
                         <div>
