@@ -468,29 +468,7 @@ function QuoteGeneratorPage({
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
 
-    let cloudSaveSuccessful = false;
-
-    try {
-      // Try to save to Vercel cloud storage
-      const response = await fetch('/api/comparisons', {
-        method: isEditing ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(comparisonData),
-      });
-
-      if (response.ok) {
-        cloudSaveSuccessful = true;
-        console.log('✅ Cloud save successful');
-      } else {
-        console.warn('⚠️ Cloud save failed, using localStorage fallback');
-      }
-    } catch (error) {
-      console.warn('⚠️ Cloud save error, using localStorage fallback:', error);
-    }
-
-    // ALWAYS save to localStorage as backup/fallback
+    // Save to localStorage (reliable and fast)
     try {
       const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
       
@@ -510,7 +488,7 @@ function QuoteGeneratorPage({
       console.log('✅ localStorage save successful');
     } catch (localError) {
       console.error('❌ localStorage save failed:', localError);
-      alert('❌ Failed to save comparison locally. Please try again.');
+      alert('❌ Failed to save comparison. Please try again.');
       return;
     }
 
@@ -524,13 +502,12 @@ function QuoteGeneratorPage({
 
     // Show success message
     const action = isEditing ? 'updated' : 'saved';
-    const storageType = cloudSaveSuccessful ? 'Vercel Cloud ☁️' : 'locally 💾';
     
     // Trigger completion page
     if (onSaveComplete) {
       onSaveComplete(comparisonData);
     } else {
-      alert(`✅ Comparison ${action} successfully (${storageType})!\nReference: ${comparisonData.referenceNumber}`);
+      alert(`✅ Comparison ${action} successfully!\nReference: ${comparisonData.referenceNumber}`);
     }
   };
 
@@ -1262,58 +1239,18 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     try {
       setLoading(true);
       
-      let cloudHistory: SavedComparison[] = [];
-      let cloudWorking = false;
-      
-      // Try to load from Vercel cloud first
-      try {
-        const response = await fetch('/api/comparisons');
-        if (response.ok) {
-          const data = await response.json();
-          cloudHistory = data.comparisons || [];
-          cloudWorking = true;
-          console.log('✅ Cloud data loaded successfully');
-        } else {
-          console.warn('⚠️ Cloud API returned error:', response.status);
-        }
-      } catch (cloudError) {
-        console.warn('⚠️ Cloud API unavailable:', cloudError);
-      }
-      
-      // ALWAYS load from localStorage as fallback/primary
-      const localHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-      
-      let mergedHistory = [...localHistory];
-      
-      if (cloudWorking && cloudHistory.length > 0) {
-        // Merge cloud and local data, prioritizing cloud data for duplicates
-        mergedHistory = [...cloudHistory];
-        localHistory.forEach((localItem: SavedComparison) => {
-          if (!mergedHistory.find(cloudItem => cloudItem.id === localItem.id)) {
-            mergedHistory.push(localItem);
-          }
-        });
-        console.log('✅ Cloud and local data merged');
-      } else {
-        console.log('📱 Using localStorage data only');
-      }
+      // Load from localStorage
+      const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
       
       // Sort by date, newest first
-      mergedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      savedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
-      setHistory(mergedHistory);
+      setHistory(savedHistory);
+      console.log('✅ localStorage data loaded');
       
     } catch (error) {
       console.error('❌ Failed to load data:', error);
-      // Final fallback to localStorage only
-      try {
-        const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-        setHistory(savedHistory);
-        console.log('📱 Fallback to localStorage successful');
-      } catch (localError) {
-        console.error('❌ localStorage also failed:', localError);
-        setHistory([]);
-      }
+      setHistory([]);
     } finally {
       setLoading(false);
     }
@@ -1321,16 +1258,6 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
 
   const deleteComparison = async (id: string) => {
     if (confirm('Are you sure you want to delete this comparison?')) {
-      try {
-        // Delete from cloud
-        await fetch(`/api/comparisons?id=${id}`, {
-          method: 'DELETE',
-        });
-      } catch (error) {
-        console.error('Failed to delete from cloud:', error);
-      }
-      
-      // Also delete from localStorage
       const updatedHistory = history.filter(comp => comp.id !== id);
       setHistory(updatedHistory);
       localStorage.setItem('generalInsuranceHistory', JSON.stringify(updatedHistory));
@@ -1433,7 +1360,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
-            <p className="text-sm text-gray-600">💾 Saved locally + ☁️ Cloud sync (if available)</p>
+            <p className="text-sm text-gray-600">💾 Saved locally in your browser</p>
           </div>
           <button
             onClick={loadHistory}
@@ -1447,7 +1374,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         {loading ? (
           <div className="text-center text-gray-400 italic py-20">
             <div className="animate-spin text-4xl mb-4">⏳</div>
-            Loading comparisons from cloud...
+            Loading your saved comparisons...
           </div>
         ) : history.length === 0 ? (
           <div className="text-center text-gray-400 italic py-20">
