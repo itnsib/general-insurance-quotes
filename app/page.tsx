@@ -296,13 +296,13 @@ function QuoteGeneratorPage({
     }
   }, [insuranceLine, customCompanies]);
 
-  // Initialize quotes when selected companies change
+  // Initialize quotes when selected companies change (but not during editing)
   useEffect(() => {
-    if (insuranceLine && selectedCompanies.length > 0) {
+    if (insuranceLine && selectedCompanies.length > 0 && !isEditing) {
       const newQuotes = selectedCompanies.map(company => createEmptyQuote(company));
       setQuotes(newQuotes);
     }
-  }, [selectedCompanies, insuranceLine]); // Added insuranceLine dependency
+  }, [selectedCompanies, insuranceLine]); // Removed isEditing dependency to prevent loop
 
   // Add new custom company
   const addCustomCompany = () => {
@@ -320,7 +320,7 @@ function QuoteGeneratorPage({
     setSelectedCompanies(prev => prev.filter(c => c !== companyName));
   };
 
-  // FIXED: Load saved comparison for editing - properly load all values
+  // FIXED: Load saved comparison for editing - properly preserve all pricing values
   const loadComparisonForEdit = (comparison: SavedComparison) => {
     setIsEditing(true);
     setEditingComparison(comparison);
@@ -340,15 +340,27 @@ function QuoteGeneratorPage({
     const companyNames = comparison.quotes.map(q => q.company);
     setSelectedCompanies(companyNames);
     
-    // CRITICAL FIX: Load quotes with all their values preserved
-    const loadedQuotes = comparison.quotes.map(quote => ({
-      ...quote,
-      // Ensure all numeric values are properly loaded
-      premium: Number(quote.premium) || 0,
-      policyFee: Number(quote.policyFee) || 0,
-      vat: Number(quote.vat) || 0,
-      total: Number(quote.total) || 0
-    }));
+    // CRITICAL FIX: Properly convert all numeric values and preserve them
+    const loadedQuotes = comparison.quotes.map(quote => {
+      const premium = parseFloat(quote.premium?.toString() || '0') || 0;
+      const policyFee = parseFloat(quote.policyFee?.toString() || '0') || 0;
+      const vat = parseFloat(quote.vat?.toString() || '0') || 0;
+      const total = parseFloat(quote.total?.toString() || '0') || 0;
+      
+      return {
+        ...quote,
+        // Ensure all numeric values are properly loaded and converted
+        premium: premium,
+        policyFee: policyFee,
+        vat: vat,
+        total: total,
+        // Preserve arrays properly
+        conditions: Array.isArray(quote.conditions) ? [...quote.conditions] : [],
+        exclusions: Array.isArray(quote.exclusions) ? [...quote.exclusions] : []
+      };
+    });
+    
+    // Set quotes immediately after loading
     setQuotes(loadedQuotes);
     
     // Add any custom companies that aren't in defaults
@@ -363,6 +375,8 @@ function QuoteGeneratorPage({
       });
       return newCustom;
     });
+    
+    console.log('Loaded quotes for editing:', loadedQuotes); // Debug log
   };
 
   // Cancel editing and reset
@@ -454,36 +468,80 @@ function QuoteGeneratorPage({
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
 
-    // Save to localStorage
-    const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-    
-    if (isEditing && editingComparison) {
-      // Update existing comparison
-      const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
-      if (index !== -1) {
-        history[index] = comparisonData;
+    try {
+      // Save to Vercel cloud storage via API
+      const response = await fetch('/api/comparisons', {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(comparisonData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save to cloud');
+      }
+
+      // Fallback: Also save to localStorage for offline access
+      const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+      
+      if (isEditing && editingComparison) {
+        // Update existing comparison
+        const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
+        if (index !== -1) {
+          history[index] = comparisonData;
+          localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+        }
+      } else {
+        // Add new comparison
+        history.unshift(comparisonData);
         localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
       }
-    } else {
-      // Add new comparison
-      history.unshift(comparisonData);
-      localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
-    }
 
-    // Generate HTML file
-    downloadComparison(comparisonData);
+      // Generate HTML file
+      downloadComparison(comparisonData);
 
-    // Reset form and edit state
-    setIsEditing(false);
-    setEditingComparison(null);
-    resetForm();
+      // Reset form and edit state
+      setIsEditing(false);
+      setEditingComparison(null);
+      resetForm();
 
-    // Trigger completion page with your image
-    if (onSaveComplete) {
-      onSaveComplete(comparisonData);
-    } else {
-      const action = isEditing ? 'updated' : 'saved';
-      alert(`✅ Comparison ${action} successfully!\nReference: ${comparisonData.referenceNumber}`);
+      // Trigger completion page with your image
+      if (onSaveComplete) {
+        onSaveComplete(comparisonData);
+      } else {
+        const action = isEditing ? 'updated' : 'saved';
+        alert(`✅ Comparison ${action} successfully to Vercel Cloud!\nReference: ${comparisonData.referenceNumber}`);
+      }
+
+    } catch (error) {
+      console.error('Cloud save failed:', error);
+      
+      // Fallback to localStorage if cloud save fails
+      const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+      
+      if (isEditing && editingComparison) {
+        const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
+        if (index !== -1) {
+          history[index] = comparisonData;
+          localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+        }
+      } else {
+        history.unshift(comparisonData);
+        localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
+      }
+
+      downloadComparison(comparisonData);
+      setIsEditing(false);
+      setEditingComparison(null);
+      resetForm();
+
+      if (onSaveComplete) {
+        onSaveComplete(comparisonData);
+      } else {
+        const action = isEditing ? 'updated' : 'saved';
+        alert(`⚠️ Saved locally (cloud unavailable)\nReference: ${comparisonData.referenceNumber}`);
+      }
     }
   };
 
@@ -1205,14 +1263,63 @@ Press Enter for new line"
 // ============ SAVED HISTORY PAGE ============
 function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison: SavedComparison) => void }) {
   const [history, setHistory] = useState<SavedComparison[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-    setHistory(savedHistory);
+    loadHistory();
   }, []);
 
-  const deleteComparison = (id: string) => {
+  const loadHistory = async () => {
+    try {
+      setLoading(true);
+      
+      // Try to load from Vercel cloud first
+      const response = await fetch('/api/comparisons');
+      let cloudHistory: SavedComparison[] = [];
+      
+      if (response.ok) {
+        const data = await response.json();
+        cloudHistory = data.comparisons || [];
+      }
+      
+      // Also load from localStorage as fallback/backup
+      const localHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+      
+      // Merge cloud and local data, prioritizing cloud data for duplicates
+      const mergedHistory = [...cloudHistory];
+      localHistory.forEach((localItem: SavedComparison) => {
+        if (!mergedHistory.find(cloudItem => cloudItem.id === localItem.id)) {
+          mergedHistory.push(localItem);
+        }
+      });
+      
+      // Sort by date, newest first
+      mergedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      setHistory(mergedHistory);
+      
+    } catch (error) {
+      console.error('Failed to load from cloud, using localStorage:', error);
+      // Fallback to localStorage only
+      const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+      setHistory(savedHistory);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteComparison = async (id: string) => {
     if (confirm('Are you sure you want to delete this comparison?')) {
+      try {
+        // Delete from cloud
+        await fetch(`/api/comparisons?id=${id}`, {
+          method: 'DELETE',
+        });
+      } catch (error) {
+        console.error('Failed to delete from cloud:', error);
+      }
+      
+      // Also delete from localStorage
       const updatedHistory = history.filter(comp => comp.id !== id);
       setHistory(updatedHistory);
       localStorage.setItem('generalInsuranceHistory', JSON.stringify(updatedHistory));
@@ -1312,10 +1419,26 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   return (
     <div className="grid grid-cols-1 gap-5">
       <div className="bg-white rounded-xl p-5 shadow-2xl">
-        <h2 className="text-2xl font-bold mb-4 text-gray-800">Saved History</h2>
-        <p className="text-sm text-gray-600 mb-4">📁 All comparisons are saved locally</p>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
+            <p className="text-sm text-gray-600">☁️ Synced with Vercel Cloud + Local Storage</p>
+          </div>
+          <button
+            onClick={loadHistory}
+            disabled={loading}
+            className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition disabled:opacity-50"
+          >
+            {loading ? '🔄 Loading...' : '🔄 Refresh'}
+          </button>
+        </div>
         
-        {history.length === 0 ? (
+        {loading ? (
+          <div className="text-center text-gray-400 italic py-20">
+            <div className="animate-spin text-4xl mb-4">⏳</div>
+            Loading comparisons from cloud...
+          </div>
+        ) : history.length === 0 ? (
           <div className="text-center text-gray-400 italic py-20">
             No saved comparisons yet. Create a comparison and save it to see it here.
           </div>
