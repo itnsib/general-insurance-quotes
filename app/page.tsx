@@ -625,6 +625,10 @@ function QuoteGeneratorPage({
         <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
         <div class="cover-subtitle">Professional Insurance Solutions</div>
         
+        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" 
+             style="max-width: 90%; max-height: 50vh; width: auto; height: auto; border-radius: 15px; 
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 30px;" />
+        
         <div class="cover-details">
             <h3>Insurance Comparison Report</h3>
             <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
@@ -1029,19 +1033,16 @@ function QuoteGeneratorPage({
                           <div className="bg-white p-2 rounded border">
                             <textarea
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px] resize-vertical"
-                              value={quote.conditions.map(condition => `• ${condition}`).join('\n')}
+                              value={quote.conditions.join('\n')}
                               onChange={(e) => {
-                                const text = e.target.value;
-                                const lines = text.split('\n')
-                                  .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
-                                  .filter(line => line.length > 0);
+                                const lines = e.target.value.split('\n').filter(line => line.trim() !== '');
                                 updateQuote(idx, 'conditions', lines);
                               }}
                               placeholder="Enter conditions/extensions (one per line):
-• First condition
-• Second condition
-• Third condition"
-                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4' }}
+First condition
+Second condition
+Third condition"
+                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
                             />
                             <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions • Press Enter for new line</p>
                           </div>
@@ -1052,19 +1053,16 @@ function QuoteGeneratorPage({
                           <div className="bg-red-50 p-2 rounded border border-red-200">
                             <textarea
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px] resize-vertical"
-                              value={quote.exclusions.map(exclusion => `• ${exclusion}`).join('\n')}
+                              value={quote.exclusions.join('\n')}
                               onChange={(e) => {
-                                const text = e.target.value;
-                                const lines = text.split('\n')
-                                  .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
-                                  .filter(line => line.length > 0);
+                                const lines = e.target.value.split('\n').filter(line => line.trim() !== '');
                                 updateQuote(idx, 'exclusions', lines);
                               }}
                               placeholder="Enter main exclusions (one per line):
-• First exclusion
-• Second exclusion
-• Third exclusion"
-                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4' }}
+First exclusion
+Second exclusion
+Third exclusion"
+                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
                             />
                             <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions • Press Enter for new line</p>
                           </div>
@@ -1266,6 +1264,11 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     <div class="page cover-page">
         <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
         <div class="cover-subtitle">Professional Insurance Solutions</div>
+        
+        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" 
+             style="max-width: 90%; max-height: 50vh; width: auto; height: auto; border-radius: 15px; 
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 30px;" />
+        
         <div class="cover-details">
             <h3>Insurance Comparison Report</h3>
             <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
