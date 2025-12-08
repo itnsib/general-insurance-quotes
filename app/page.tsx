@@ -302,7 +302,7 @@ function QuoteGeneratorPage({
       const newQuotes = selectedCompanies.map(company => createEmptyQuote(company));
       setQuotes(newQuotes);
     }
-  }, [selectedCompanies]);
+  }, [selectedCompanies, insuranceLine]); // Added insuranceLine dependency
 
   // Add new custom company
   const addCustomCompany = () => {
@@ -320,7 +320,7 @@ function QuoteGeneratorPage({
     setSelectedCompanies(prev => prev.filter(c => c !== companyName));
   };
 
-  // Load saved comparison for editing
+  // FIXED: Load saved comparison for editing - properly load all values
   const loadComparisonForEdit = (comparison: SavedComparison) => {
     setIsEditing(true);
     setEditingComparison(comparison);
@@ -328,7 +328,7 @@ function QuoteGeneratorPage({
     // Load all the data back into the form
     const insuranceLineValue = INSURANCE_LINES.find(line => line.label === comparison.insuranceLine)?.value || '';
     setInsuranceLine(insuranceLineValue);
-    setCustomerName(comparison.customerName);
+    setCustomerName(comparison.customerName || '');
     setAddress(comparison.address || '');
     setBusinessActivity(comparison.businessActivity || '');
     setLocation(comparison.location || '');
@@ -336,10 +336,20 @@ function QuoteGeneratorPage({
     setEnquiryNumber(comparison.enquiryNumber || '');
     setAdvisorComment(comparison.advisorComment || '');
     
-    // Load quotes and companies
+    // Load quotes and companies - preserve all values including premium
     const companyNames = comparison.quotes.map(q => q.company);
     setSelectedCompanies(companyNames);
-    setQuotes(comparison.quotes);
+    
+    // CRITICAL FIX: Load quotes with all their values preserved
+    const loadedQuotes = comparison.quotes.map(quote => ({
+      ...quote,
+      // Ensure all numeric values are properly loaded
+      premium: Number(quote.premium) || 0,
+      policyFee: Number(quote.policyFee) || 0,
+      vat: Number(quote.vat) || 0,
+      total: Number(quote.total) || 0
+    }));
+    setQuotes(loadedQuotes);
     
     // Add any custom companies that aren't in defaults
     const defaultCompanies = getInsuranceCompanies(insuranceLineValue);
@@ -403,19 +413,6 @@ function QuoteGeneratorPage({
       const { vat, total } = calculateVAT(newQuotes[index].premium, newQuotes[index].policyFee, insuranceLine);
       newQuotes[index].vat = vat;
       newQuotes[index].total = total;
-    }
-    
-    setQuotes(newQuotes);
-  };
-
-  const toggleCondition = (quoteIndex: number, condition: string) => {
-    const newQuotes = [...quotes];
-    const currentConditions = newQuotes[quoteIndex].conditions;
-    
-    if (currentConditions.includes(condition)) {
-      newQuotes[quoteIndex].conditions = currentConditions.filter(c => c !== condition);
-    } else {
-      newQuotes[quoteIndex].conditions = [...currentConditions, condition];
     }
     
     setQuotes(newQuotes);
@@ -498,7 +495,6 @@ function QuoteGeneratorPage({
     setAvailableCompanies([]);
     setSelectedCompanies([]);
     // Keep custom companies for future use unless explicitly cleared
-    // setCustomCompanies([]);
     setNewCompanyName('');
     setShowAddCompany(false);
   };
@@ -507,7 +503,7 @@ function QuoteGeneratorPage({
     // Check if GLPA insurance for VAT handling
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
     
-    // Create HTML content without branding page, single page layout
+    // Create HTML content with professional cover page
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -516,7 +512,61 @@ function QuoteGeneratorPage({
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${comparison.insuranceLine} - Insurance Comparison</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 10px; background: #fff; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
+        .page:last-child { page-break-after: auto; }
+        
+        /* First Page - Professional Cover */
+        .cover-page { 
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center;
+            min-height: 100vh;
+            padding: 40px;
+        }
+        .cover-title {
+            font-size: 42px;
+            font-weight: bold;
+            color: #203864;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .cover-subtitle {
+            font-size: 24px;
+            color: #4472C4;
+            margin-bottom: 40px;
+        }
+        .cover-details {
+            background: rgba(255,255,255,0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 2px solid #4472C4;
+        }
+        .cover-details h3 {
+            color: #203864;
+            margin-top: 0;
+            font-size: 28px;
+            border-bottom: 2px solid #4472C4;
+            padding-bottom: 10px;
+        }
+        .cover-details p {
+            color: #495057;
+            margin: 15px 0;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .cover-footer {
+            margin-top: 50px;
+            color: #6c757d;
+            font-size: 16px;
+        }
+
+        /* Second Page - Comparison Data */
+        .comparison-page { background: #f8f9fa; }
         .container { max-width: 100%; margin: 0; padding: 15px; }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
@@ -556,7 +606,6 @@ function QuoteGeneratorPage({
         .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .conditions-list, .exclusions-list { font-size: 9px; line-height: 1.2; }
         .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
         .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
@@ -571,133 +620,156 @@ function QuoteGeneratorPage({
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
+    <!-- FIRST PAGE: Professional Cover -->
+    <div class="page cover-page">
+        <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="cover-subtitle">Professional Insurance Solutions</div>
+        
+        <div class="cover-details">
+            <h3>Insurance Comparison Report</h3>
+            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
+            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Customer:</strong> ${comparison.customerName}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
+            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
         </div>
         
-        <div class="ref-date">
-            <span>Reference: ${comparison.referenceNumber}</span>
-            <span>Date: ${comparison.date.substring(0, 10)}</span>
+        <div class="cover-footer">
+            <p>Professional insurance quote comparison system<br>
+            Generated on ${new Date().toLocaleString('en-GB')}</p>
         </div>
+    </div>
 
-        <div class="customer-details">
-            <h3>Customer Information</h3>
-            <div class="details-grid">
-                <div class="detail-item">
-                    <div class="detail-label">Customer Name:</div>
-                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
-                </div>
-                ${comparison.address ? `
-                <div class="detail-item">
-                    <div class="detail-label">Address:</div>
-                    <div class="detail-value">${comparison.address}</div>
-                </div>` : ''}
-                ${comparison.businessActivity ? `
-                <div class="detail-item">
-                    <div class="detail-label">Business Activity:</div>
-                    <div class="detail-value">${comparison.businessActivity}</div>
-                </div>` : ''}
-                ${comparison.location ? `
-                <div class="detail-item">
-                    <div class="detail-label">Location/Premises:</div>
-                    <div class="detail-value">${comparison.location}</div>
-                </div>` : ''}
-                ${comparison.enquiryNumber ? `
-                <div class="detail-item">
-                    <div class="detail-label">Enquiry Number:</div>
-                    <div class="detail-value">${comparison.enquiryNumber}</div>
-                </div>` : ''}
-                ${comparison.propertyLimit ? `
-                <div class="detail-item">
-                    <div class="detail-label">Property Limit:</div>
-                    <div class="detail-value">${comparison.propertyLimit}</div>
-                </div>` : ''}
+    <!-- SECOND PAGE: Comparison Details -->
+    <div class="page comparison-page">
+        <div class="container">
+            <div class="header">
+                <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
             </div>
-        </div>
+            
+            <div class="ref-date">
+                <span>Reference: ${comparison.referenceNumber}</span>
+                <span>Date: ${comparison.date.substring(0, 10)}</span>
+            </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th class="sno">S.No.</th>
-                    <th class="particulars">Particulars</th>
-                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td class="sno">1</td>
-                    <td class="particulars">Scope of Cover</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">2</td>
-                    <td class="particulars">Geographical Limits</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">3</td>
-                    <td class="particulars">Conditions/Extensions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">4</td>
-                    <td class="particulars">Main Exclusions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">5</td>
-                    <td class="particulars">Deductible</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">6</td>
-                    <td class="particulars">Premium Rate</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">7</td>
-                    <td class="particulars">Premium (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">8</td>
-                    <td class="particulars">Policy Fee (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
-                </tr>
-                ${!isGLPA ? `<tr>
-                    <td class="sno">9</td>
-                    <td class="particulars">VAT (5%)</td>
-                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
-                </tr>` : ''}
-                <tr style="background: #f0f8ff; font-weight: bold;">
-                    <td class="sno">${!isGLPA ? '10' : '9'}</td>
-                    <td class="particulars">Total (AED)</td>
-                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
-                </tr>
-            </tbody>
-        </table>
+            <div class="customer-details">
+                <h3>Customer Information</h3>
+                <div class="details-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Customer Name:</div>
+                        <div class="detail-value">${comparison.customerName || 'N/A'}</div>
+                    </div>
+                    ${comparison.address ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Address:</div>
+                        <div class="detail-value">${comparison.address}</div>
+                    </div>` : ''}
+                    ${comparison.businessActivity ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Business Activity:</div>
+                        <div class="detail-value">${comparison.businessActivity}</div>
+                    </div>` : ''}
+                    ${comparison.location ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Location/Premises:</div>
+                        <div class="detail-value">${comparison.location}</div>
+                    </div>` : ''}
+                    ${comparison.enquiryNumber ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Enquiry Number:</div>
+                        <div class="detail-value">${comparison.enquiryNumber}</div>
+                    </div>` : ''}
+                    ${comparison.propertyLimit ? `
+                    <div class="detail-item">
+                        <div class="detail-label">Property Limit:</div>
+                        <div class="detail-value">${comparison.propertyLimit}</div>
+                    </div>` : ''}
+                </div>
+            </div>
 
-        ${comparison.advisorComment ? `
-        <div class="advisor-comment">
-            <h4>Advisor Comment:</h4>
-            <p>${comparison.advisorComment}</p>
-        </div>` : ''}
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sno">S.No.</th>
+                        <th class="particulars">Particulars</th>
+                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="sno">1</td>
+                        <td class="particulars">Scope of Cover</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">2</td>
+                        <td class="particulars">Geographical Limits</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">3</td>
+                        <td class="particulars">Conditions/Extensions</td>
+                        ${comparison.quotes.map(quote => `
+                            <td>
+                                ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
+                            </td>
+                        `).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">4</td>
+                        <td class="particulars">Main Exclusions</td>
+                        ${comparison.quotes.map(quote => `
+                            <td>
+                                ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
+                            </td>
+                        `).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">5</td>
+                        <td class="particulars">Deductible</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">6</td>
+                        <td class="particulars">Premium Rate</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">7</td>
+                        <td class="particulars">Premium (AED)</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
+                    </tr>
+                    <tr>
+                        <td class="sno">8</td>
+                        <td class="particulars">Policy Fee (AED)</td>
+                        ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
+                    </tr>
+                    ${!isGLPA ? `<tr>
+                        <td class="sno">9</td>
+                        <td class="particulars">VAT (5%)</td>
+                        ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
+                    </tr>` : ''}
+                    <tr style="background: #f0f8ff; font-weight: bold;">
+                        <td class="sno">${!isGLPA ? '10' : '9'}</td>
+                        <td class="particulars">Total (AED)</td>
+                        ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
+                    </tr>
+                </tbody>
+            </table>
 
-        <div class="summary">
-            <h3>Summary</h3>
-            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+            ${comparison.advisorComment ? `
+            <div class="advisor-comment">
+                <h4>Advisor Comment:</h4>
+                <p>${comparison.advisorComment}</p>
+            </div>` : ''}
+
+            <div class="summary">
+                <h3>Summary</h3>
+                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+            </div>
         </div>
     </div>
 </body>
@@ -956,15 +1028,22 @@ function QuoteGeneratorPage({
                           <label className="block text-xs font-bold mb-1 text-gray-800">Conditions/Extensions</label>
                           <div className="bg-white p-2 rounded border">
                             <textarea
-                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px]"
-                              value={quote.conditions.join('\n• ')}
+                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px] resize-vertical"
+                              value={quote.conditions.map(condition => `• ${condition}`).join('\n')}
                               onChange={(e) => {
-                                const lines = e.target.value.split('\n').map(line => line.replace(/^•\s*/, '').trim()).filter(line => line);
+                                const text = e.target.value;
+                                const lines = text.split('\n')
+                                  .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
+                                  .filter(line => line.length > 0);
                                 updateQuote(idx, 'conditions', lines);
                               }}
-                              placeholder="Enter conditions/extensions (one per line, bullet points will be added automatically)"
+                              placeholder="Enter conditions/extensions (one per line):
+• First condition
+• Second condition
+• Third condition"
+                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4' }}
                             />
-                            <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions • Edit directly or add new lines</p>
+                            <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions • Press Enter for new line</p>
                           </div>
                         </div>
 
@@ -972,15 +1051,22 @@ function QuoteGeneratorPage({
                           <label className="block text-xs font-bold mb-1 text-gray-800">Main Exclusions</label>
                           <div className="bg-red-50 p-2 rounded border border-red-200">
                             <textarea
-                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px]"
-                              value={quote.exclusions.join('\n• ')}
+                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px] resize-vertical"
+                              value={quote.exclusions.map(exclusion => `• ${exclusion}`).join('\n')}
                               onChange={(e) => {
-                                const lines = e.target.value.split('\n').map(line => line.replace(/^•\s*/, '').trim()).filter(line => line);
+                                const text = e.target.value;
+                                const lines = text.split('\n')
+                                  .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
+                                  .filter(line => line.length > 0);
                                 updateQuote(idx, 'exclusions', lines);
                               }}
-                              placeholder="Enter main exclusions (one per line, bullet points will be added automatically)"
+                              placeholder="Enter main exclusions (one per line):
+• First exclusion
+• Second exclusion
+• Third exclusion"
+                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4' }}
                             />
-                            <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions • Edit directly or add new lines</p>
+                            <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions • Press Enter for new line</p>
                           </div>
                         </div>
 
@@ -1014,6 +1100,8 @@ function QuoteGeneratorPage({
                               className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
                               value={quote.premium}
                               onChange={(e) => updateQuote(idx, 'premium', parseFloat(e.target.value) || 0)}
+                              step="0.01"
+                              min="0"
                             />
                           </div>
                           <div>
@@ -1023,6 +1111,8 @@ function QuoteGeneratorPage({
                               className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
                               value={quote.policyFee}
                               onChange={(e) => updateQuote(idx, 'policyFee', parseFloat(e.target.value) || 0)}
+                              step="0.01"
+                              min="0"
                             />
                           </div>
                         </div>
@@ -1111,10 +1201,10 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   };
 
   const downloadComparison = (comparison: SavedComparison) => {
-    // Check if GLPA insurance for VAT handling
+    // Use the same download function as the main page
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
     
-    // Create HTML content without branding page, single page layout
+    // Professional cover page with all comparison details
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1123,7 +1213,25 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${comparison.insuranceLine} - Insurance Comparison</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 10px; background: #fff; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
+        .page:last-child { page-break-after: auto; }
+        
+        /* First Page - Professional Cover */
+        .cover-page { 
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            text-align: center; min-height: 100vh; padding: 40px;
+        }
+        .cover-title { font-size: 42px; font-weight: bold; color: #203864; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+        .cover-subtitle { font-size: 24px; color: #4472C4; margin-bottom: 40px; }
+        .cover-details { background: rgba(255,255,255,0.95); padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 2px solid #4472C4; }
+        .cover-details h3 { color: #203864; margin-top: 0; font-size: 28px; border-bottom: 2px solid #4472C4; padding-bottom: 10px; }
+        .cover-details p { color: #495057; margin: 15px 0; font-size: 18px; font-weight: 500; }
+        .cover-footer { margin-top: 50px; color: #6c757d; font-size: 16px; }
+
+        /* Second Page - Comparison Data */
+        .comparison-page { background: #f8f9fa; }
         .container { max-width: 100%; margin: 0; padding: 15px; }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
@@ -1131,45 +1239,22 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .customer-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; page-break-inside: avoid; }
         .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 0; font-size: 16px; }
         .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px; }
-        .detail-item { }
         .detail-label { font-weight: bold; color: #555; }
         .detail-value { color: #333; }
         
-        /* Optimized table for single page */
-        table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-bottom: 20px; 
-            font-size: 11px;
-            page-break-inside: avoid;
-        }
-        th { 
-            background: #4472C4; 
-            color: white; 
-            padding: 8px 4px; 
-            text-align: center; 
-            border: 1px solid #ddd; 
-            font-weight: bold; 
-            font-size: 11px;
-        }
-        td { 
-            padding: 6px 4px; 
-            border: 1px solid #ddd; 
-            vertical-align: top; 
-            font-size: 10px;
-            line-height: 1.3;
-        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; page-break-inside: avoid; }
+        th { background: #4472C4; color: white; padding: 8px 4px; text-align: center; border: 1px solid #ddd; font-weight: bold; font-size: 11px; }
+        td { padding: 6px 4px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; line-height: 1.3; }
         .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
         .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .conditions-list, .exclusions-list { font-size: 9px; line-height: 1.2; }
         .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
         .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
         
         @media print { 
-            body { margin: 0; font-size: 10px; } 
+            body { margin: 0; font-size: 10px; }
             .container { padding: 10px; }
             table { font-size: 9px; }
             td { padding: 4px 2px; }
@@ -1178,139 +1263,79 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
-        </div>
-        
-        <div class="ref-date">
-            <span>Reference: ${comparison.referenceNumber}</span>
-            <span>Date: ${comparison.date.substring(0, 10)}</span>
-        </div>
-
-        <div class="customer-details">
-            <h3>Customer Information</h3>
-            <div class="details-grid">
-                <div class="detail-item">
-                    <div class="detail-label">Customer Name:</div>
-                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
-                </div>
-                ${comparison.address ? `
-                <div class="detail-item">
-                    <div class="detail-label">Address:</div>
-                    <div class="detail-value">${comparison.address}</div>
-                </div>` : ''}
-                ${comparison.businessActivity ? `
-                <div class="detail-item">
-                    <div class="detail-label">Business Activity:</div>
-                    <div class="detail-value">${comparison.businessActivity}</div>
-                </div>` : ''}
-                ${comparison.location ? `
-                <div class="detail-item">
-                    <div class="detail-label">Location/Premises:</div>
-                    <div class="detail-value">${comparison.location}</div>
-                </div>` : ''}
-                ${comparison.enquiryNumber ? `
-                <div class="detail-item">
-                    <div class="detail-label">Enquiry Number:</div>
-                    <div class="detail-value">${comparison.enquiryNumber}</div>
-                </div>` : ''}
-                ${comparison.propertyLimit ? `
-                <div class="detail-item">
-                    <div class="detail-label">Property Limit:</div>
-                    <div class="detail-value">${comparison.propertyLimit}</div>
-                </div>` : ''}
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th class="sno">S.No.</th>
-                    <th class="particulars">Particulars</th>
-                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td class="sno">1</td>
-                    <td class="particulars">Scope of Cover</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">2</td>
-                    <td class="particulars">Geographical Limits</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">3</td>
-                    <td class="particulars">Conditions/Extensions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">4</td>
-                    <td class="particulars">Main Exclusions</td>
-                    ${comparison.quotes.map(quote => `
-                        <td>
-                            ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
-                        </td>
-                    `).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">5</td>
-                    <td class="particulars">Deductible</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">6</td>
-                    <td class="particulars">Premium Rate</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">7</td>
-                    <td class="particulars">Premium (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
-                </tr>
-                <tr>
-                    <td class="sno">8</td>
-                    <td class="particulars">Policy Fee (AED)</td>
-                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
-                </tr>
-                ${!isGLPA ? `<tr>
-                    <td class="sno">9</td>
-                    <td class="particulars">VAT (5%)</td>
-                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
-                </tr>` : ''}
-                <tr style="background: #f0f8ff; font-weight: bold;">
-                    <td class="sno">${!isGLPA ? '10' : '9'}</td>
-                    <td class="particulars">Total (AED)</td>
-                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
-                </tr>
-            </tbody>
-        </table>
-
-        ${comparison.advisorComment ? `
-        <div class="advisor-comment">
-            <h4>Advisor Comment:</h4>
-            <p>${comparison.advisorComment}</p>
-        </div>` : ''}
-
-        <div class="summary">
-            <h3>Summary</h3>
+    <div class="page cover-page">
+        <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="cover-subtitle">Professional Insurance Solutions</div>
+        <div class="cover-details">
+            <h3>Insurance Comparison Report</h3>
+            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
             <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Customer:</strong> ${comparison.customerName}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
             <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+        </div>
+        <div class="cover-footer">
+            <p>Professional insurance quote comparison system<br>Generated on ${new Date().toLocaleString('en-GB')}</p>
+        </div>
+    </div>
+
+    <div class="page comparison-page">
+        <div class="container">
+            <div class="header"><div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div></div>
+            
+            <div class="ref-date">
+                <span>Reference: ${comparison.referenceNumber}</span>
+                <span>Date: ${comparison.date.substring(0, 10)}</span>
+            </div>
+
+            <div class="customer-details">
+                <h3>Customer Information</h3>
+                <div class="details-grid">
+                    <div><div class="detail-label">Customer Name:</div><div class="detail-value">${comparison.customerName || 'N/A'}</div></div>
+                    ${comparison.address ? `<div><div class="detail-label">Address:</div><div class="detail-value">${comparison.address}</div></div>` : ''}
+                    ${comparison.businessActivity ? `<div><div class="detail-label">Business Activity:</div><div class="detail-value">${comparison.businessActivity}</div></div>` : ''}
+                    ${comparison.location ? `<div><div class="detail-label">Location/Premises:</div><div class="detail-value">${comparison.location}</div></div>` : ''}
+                    ${comparison.enquiryNumber ? `<div><div class="detail-label">Enquiry Number:</div><div class="detail-value">${comparison.enquiryNumber}</div></div>` : ''}
+                    ${comparison.propertyLimit ? `<div><div class="detail-label">Property Limit:</div><div class="detail-value">${comparison.propertyLimit}</div></div>` : ''}
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sno">S.No.</th>
+                        <th class="particulars">Particulars</th>
+                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td class="sno">1</td><td class="particulars">Scope of Cover</td>${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}</tr>
+                    <tr><td class="sno">2</td><td class="particulars">Geographical Limits</td>${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}</tr>
+                    <tr><td class="sno">3</td><td class="particulars">Conditions/Extensions</td>${comparison.quotes.map(quote => `<td>${quote.conditions.map(condition => `• ${condition}`).join('<br>')}</td>`).join('')}</tr>
+                    <tr><td class="sno">4</td><td class="particulars">Main Exclusions</td>${comparison.quotes.map(quote => `<td>${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}</td>`).join('')}</tr>
+                    <tr><td class="sno">5</td><td class="particulars">Deductible</td>${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}</tr>
+                    <tr><td class="sno">6</td><td class="particulars">Premium Rate</td>${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}</tr>
+                    <tr><td class="sno">7</td><td class="particulars">Premium (AED)</td>${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}</tr>
+                    <tr><td class="sno">8</td><td class="particulars">Policy Fee (AED)</td>${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}</tr>
+                    ${!isGLPA ? `<tr><td class="sno">9</td><td class="particulars">VAT (5%)</td>${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}</tr>` : ''}
+                    <tr style="background: #f0f8ff; font-weight: bold;"><td class="sno">${!isGLPA ? '10' : '9'}</td><td class="particulars">Total (AED)</td>${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}</tr>
+                </tbody>
+            </table>
+
+            ${comparison.advisorComment ? `<div class="advisor-comment"><h4>Advisor Comment:</h4><p>${comparison.advisorComment}</p></div>` : ''}
+
+            <div class="summary">
+                <h3>Summary</h3>
+                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+            </div>
         </div>
     </div>
 </body>
 </html>`;
 
-    // Create and download HTML file
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
