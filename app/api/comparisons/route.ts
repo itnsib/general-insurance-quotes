@@ -1,7 +1,6 @@
 // app/api/comparisons/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, readFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { kv } from '@vercel/kv';
 
 interface SavedComparison {
   id: string;
@@ -18,41 +17,12 @@ interface SavedComparison {
   enquiryNumber?: string;
 }
 
-// File path for storing comparisons
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'comparisons.json');
-
-// Ensure data directory exists
-async function ensureDataDir() {
-  try {
-    await mkdir(DATA_DIR, { recursive: true });
-  } catch (error) {
-    // Directory already exists, ignore error
-  }
-}
-
-// Read comparisons from file
-async function readComparisons(): Promise<SavedComparison[]> {
-  try {
-    await ensureDataDir();
-    const data = await readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // File doesn't exist yet, return empty array
-    return [];
-  }
-}
-
-// Write comparisons to file
-async function writeComparisons(comparisons: SavedComparison[]) {
-  await ensureDataDir();
-  await writeFile(DATA_FILE, JSON.stringify(comparisons, null, 2));
-}
+const COMPARISONS_KEY = 'nsib:comparisons';
 
 // GET - Load all comparisons
 export async function GET() {
   try {
-    const comparisons = await readComparisons();
+    const comparisons = await kv.get<SavedComparison[]>(COMPARISONS_KEY) || [];
     
     // Sort by date, newest first
     comparisons.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -84,7 +54,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const comparisons = await readComparisons();
+    const comparisons = await kv.get<SavedComparison[]>(COMPARISONS_KEY) || [];
     
     // Check if comparison already exists
     const existingIndex = comparisons.findIndex(c => c.id === newComparison.id);
@@ -97,7 +67,7 @@ export async function POST(request: NextRequest) {
     
     // Add new comparison
     comparisons.unshift(newComparison);
-    await writeComparisons(comparisons);
+    await kv.set(COMPARISONS_KEY, comparisons);
     
     return NextResponse.json({ 
       success: true, 
@@ -125,7 +95,7 @@ export async function PUT(request: NextRequest) {
       );
     }
     
-    const comparisons = await readComparisons();
+    const comparisons = await kv.get<SavedComparison[]>(COMPARISONS_KEY) || [];
     const existingIndex = comparisons.findIndex(c => c.id === updatedComparison.id);
     
     if (existingIndex === -1) {
@@ -136,7 +106,7 @@ export async function PUT(request: NextRequest) {
       comparisons[existingIndex] = updatedComparison;
     }
     
-    await writeComparisons(comparisons);
+    await kv.set(COMPARISONS_KEY, comparisons);
     
     return NextResponse.json({ 
       success: true, 
@@ -165,7 +135,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    const comparisons = await readComparisons();
+    const comparisons = await kv.get<SavedComparison[]>(COMPARISONS_KEY) || [];
     const updatedComparisons = comparisons.filter(c => c.id !== id);
     
     if (comparisons.length === updatedComparisons.length) {
@@ -175,7 +145,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    await writeComparisons(updatedComparisons);
+    await kv.set(COMPARISONS_KEY, updatedComparisons);
     
     return NextResponse.json({ 
       success: true, 
