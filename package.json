@@ -11,7 +11,7 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "next": "16.0.1"
+    "next": "^16.0.1"
   },
   "devDependencies": {
     "typescript": "^5",
@@ -25,3 +25,4 @@
     "postcss": "^8.4.31"
   }
 }
+
