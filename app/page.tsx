@@ -444,7 +444,12 @@ function QuoteGeneratorPage({
       location,
       propertyLimit,
       enquiryNumber,
-      quotes,
+      // Filter out empty lines from conditions and exclusions when saving
+      quotes: quotes.map(quote => ({
+        ...quote,
+        conditions: quote.conditions.filter(c => c.trim().length > 0),
+        exclusions: quote.exclusions.filter(e => e.trim().length > 0)
+      })),
       advisorComment,
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
@@ -658,27 +663,7 @@ function QuoteGeneratorPage({
         <div class="image-subtitle">Professional Insurance Solutions</div>
     </div>
 
-    <!-- SECOND PAGE: Report Details -->
-    <div class="page report-page">
-        <div class="report-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="report-subtitle">Professional Insurance Solutions</div>
-        
-        <div class="report-details">
-            <h3>Insurance Comparison Report</h3>
-            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
-            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-            <p><strong>Customer:</strong> ${comparison.customerName}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
-            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-        </div>
-        
-        <div class="report-footer">
-            <p>Professional insurance quote comparison system<br>
-            Generated on ${new Date().toLocaleString('en-GB')}</p>
-        </div>
-    </div>
-
-    <!-- THIRD PAGE: Comparison Details -->
+    <!-- SECOND PAGE: Comparison Details -->
     <div class="page comparison-page">
         <div class="container">
             <div class="header">
@@ -749,7 +734,7 @@ function QuoteGeneratorPage({
                         <td class="particulars">Conditions/Extensions</td>
                         ${comparison.quotes.map(quote => `
                             <td>
-                                ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
+                                ${quote.conditions.filter(condition => condition.trim().length > 0).map(condition => `• ${condition}`).join('<br>')}
                             </td>
                         `).join('')}
                     </tr>
@@ -758,7 +743,7 @@ function QuoteGeneratorPage({
                         <td class="particulars">Main Exclusions</td>
                         ${comparison.quotes.map(quote => `
                             <td>
-                                ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
+                                ${quote.exclusions.filter(exclusion => exclusion.trim().length > 0).map(exclusion => `• ${exclusion}`).join('<br>')}
                             </td>
                         `).join('')}
                     </tr>
@@ -1069,8 +1054,8 @@ function QuoteGeneratorPage({
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px] resize-vertical"
                               value={quote.conditions.join('\n')}
                               onChange={(e) => {
-                                // FIXED: Simple line splitting that works with Enter key
-                                const lines = e.target.value.split('\n').filter(line => line.trim().length > 0);
+                                // REAL FIX: Don't filter empty lines - let user press Enter freely
+                                const lines = e.target.value.split('\n');
                                 updateQuote(idx, 'conditions', lines);
                               }}
                               placeholder="Type each condition on a new line:
@@ -1090,8 +1075,8 @@ Press Enter for new line"
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px] resize-vertical"
                               value={quote.exclusions.join('\n')}
                               onChange={(e) => {
-                                // FIXED: Simple line splitting that works with Enter key
-                                const lines = e.target.value.split('\n').filter(line => line.trim().length > 0);
+                                // REAL FIX: Don't filter empty lines - let user press Enter freely
+                                const lines = e.target.value.split('\n');
                                 updateQuote(idx, 'exclusions', lines);
                               }}
                               placeholder="Type each exclusion on a new line:
@@ -1289,19 +1274,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         <div class="image-subtitle">Professional Insurance Solutions</div>
     </div>
 
-    <div class="page report-page">
-        <div class="report-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="report-subtitle">Professional Insurance Solutions</div>
-        <div class="report-details">
-            <h3>Insurance Comparison Report</h3>
-            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
-            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-            <p><strong>Customer:</strong> ${comparison.customerName}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
-            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-        </div>
-        <div class="report-footer"><p>Professional insurance quote comparison system<br>Generated on ${new Date().toLocaleString('en-GB')}</p></div>
-    </div>
+
 
     <div class="page comparison-page">
         <div class="container">
@@ -1311,8 +1284,8 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                 <tbody>
                     <tr><td class="sno">1</td><td class="particulars">Scope of Cover</td>${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}</tr>
                     <tr><td class="sno">2</td><td class="particulars">Geographical Limits</td>${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}</tr>
-                    <tr><td class="sno">3</td><td class="particulars">Conditions/Extensions</td>${comparison.quotes.map(quote => `<td>${quote.conditions.map(condition => `• ${condition}`).join('<br>')}</td>`).join('')}</tr>
-                    <tr><td class="sno">4</td><td class="particulars">Main Exclusions</td>${comparison.quotes.map(quote => `<td>${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}</td>`).join('')}</tr>
+                    <tr><td class="sno">3</td><td class="particulars">Conditions/Extensions</td>${comparison.quotes.map(quote => `<td>${quote.conditions.filter(condition => condition.trim().length > 0).map(condition => `• ${condition}`).join('<br>')}</td>`).join('')}</tr>
+                    <tr><td class="sno">4</td><td class="particulars">Main Exclusions</td>${comparison.quotes.map(quote => `<td>${quote.exclusions.filter(exclusion => exclusion.trim().length > 0).map(exclusion => `• ${exclusion}`).join('<br>')}</td>`).join('')}</tr>
                     <tr><td class="sno">5</td><td class="particulars">Deductible</td>${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}</tr>
                     <tr><td class="sno">6</td><td class="particulars">Premium Rate</td>${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}</tr>
                     <tr><td class="sno">7</td><td class="particulars">Premium (AED)</td>${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}</tr>
