@@ -468,8 +468,10 @@ function QuoteGeneratorPage({
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
 
+    let cloudSaveSuccessful = false;
+
     try {
-      // Save to Vercel cloud storage via API
+      // Try to save to Vercel cloud storage
       const response = await fetch('/api/comparisons', {
         method: isEditing ? 'PUT' : 'POST',
         headers: {
@@ -478,11 +480,18 @@ function QuoteGeneratorPage({
         body: JSON.stringify(comparisonData),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to save to cloud');
+      if (response.ok) {
+        cloudSaveSuccessful = true;
+        console.log('✅ Cloud save successful');
+      } else {
+        console.warn('⚠️ Cloud save failed, using localStorage fallback');
       }
+    } catch (error) {
+      console.warn('⚠️ Cloud save error, using localStorage fallback:', error);
+    }
 
-      // Fallback: Also save to localStorage for offline access
+    // ALWAYS save to localStorage as backup/fallback
+    try {
       const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
       
       if (isEditing && editingComparison) {
@@ -498,50 +507,30 @@ function QuoteGeneratorPage({
         localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
       }
 
-      // Generate HTML file
-      downloadComparison(comparisonData);
+      console.log('✅ localStorage save successful');
+    } catch (localError) {
+      console.error('❌ localStorage save failed:', localError);
+      alert('❌ Failed to save comparison locally. Please try again.');
+      return;
+    }
 
-      // Reset form and edit state
-      setIsEditing(false);
-      setEditingComparison(null);
-      resetForm();
+    // Generate HTML file
+    downloadComparison(comparisonData);
 
-      // Trigger completion page with your image
-      if (onSaveComplete) {
-        onSaveComplete(comparisonData);
-      } else {
-        const action = isEditing ? 'updated' : 'saved';
-        alert(`✅ Comparison ${action} successfully to Vercel Cloud!\nReference: ${comparisonData.referenceNumber}`);
-      }
+    // Reset form and edit state
+    setIsEditing(false);
+    setEditingComparison(null);
+    resetForm();
 
-    } catch (error) {
-      console.error('Cloud save failed:', error);
-      
-      // Fallback to localStorage if cloud save fails
-      const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-      
-      if (isEditing && editingComparison) {
-        const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
-        if (index !== -1) {
-          history[index] = comparisonData;
-          localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
-        }
-      } else {
-        history.unshift(comparisonData);
-        localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
-      }
-
-      downloadComparison(comparisonData);
-      setIsEditing(false);
-      setEditingComparison(null);
-      resetForm();
-
-      if (onSaveComplete) {
-        onSaveComplete(comparisonData);
-      } else {
-        const action = isEditing ? 'updated' : 'saved';
-        alert(`⚠️ Saved locally (cloud unavailable)\nReference: ${comparisonData.referenceNumber}`);
-      }
+    // Show success message
+    const action = isEditing ? 'updated' : 'saved';
+    const storageType = cloudSaveSuccessful ? 'Vercel Cloud ☁️' : 'locally 💾';
+    
+    // Trigger completion page
+    if (onSaveComplete) {
+      onSaveComplete(comparisonData);
+    } else {
+      alert(`✅ Comparison ${action} successfully (${storageType})!\nReference: ${comparisonData.referenceNumber}`);
     }
   };
 
@@ -1273,25 +1262,41 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     try {
       setLoading(true);
       
-      // Try to load from Vercel cloud first
-      const response = await fetch('/api/comparisons');
       let cloudHistory: SavedComparison[] = [];
+      let cloudWorking = false;
       
-      if (response.ok) {
-        const data = await response.json();
-        cloudHistory = data.comparisons || [];
+      // Try to load from Vercel cloud first
+      try {
+        const response = await fetch('/api/comparisons');
+        if (response.ok) {
+          const data = await response.json();
+          cloudHistory = data.comparisons || [];
+          cloudWorking = true;
+          console.log('✅ Cloud data loaded successfully');
+        } else {
+          console.warn('⚠️ Cloud API returned error:', response.status);
+        }
+      } catch (cloudError) {
+        console.warn('⚠️ Cloud API unavailable:', cloudError);
       }
       
-      // Also load from localStorage as fallback/backup
+      // ALWAYS load from localStorage as fallback/primary
       const localHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
       
-      // Merge cloud and local data, prioritizing cloud data for duplicates
-      const mergedHistory = [...cloudHistory];
-      localHistory.forEach((localItem: SavedComparison) => {
-        if (!mergedHistory.find(cloudItem => cloudItem.id === localItem.id)) {
-          mergedHistory.push(localItem);
-        }
-      });
+      let mergedHistory = [...localHistory];
+      
+      if (cloudWorking && cloudHistory.length > 0) {
+        // Merge cloud and local data, prioritizing cloud data for duplicates
+        mergedHistory = [...cloudHistory];
+        localHistory.forEach((localItem: SavedComparison) => {
+          if (!mergedHistory.find(cloudItem => cloudItem.id === localItem.id)) {
+            mergedHistory.push(localItem);
+          }
+        });
+        console.log('✅ Cloud and local data merged');
+      } else {
+        console.log('📱 Using localStorage data only');
+      }
       
       // Sort by date, newest first
       mergedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1299,10 +1304,16 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
       setHistory(mergedHistory);
       
     } catch (error) {
-      console.error('Failed to load from cloud, using localStorage:', error);
-      // Fallback to localStorage only
-      const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-      setHistory(savedHistory);
+      console.error('❌ Failed to load data:', error);
+      // Final fallback to localStorage only
+      try {
+        const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+        setHistory(savedHistory);
+        console.log('📱 Fallback to localStorage successful');
+      } catch (localError) {
+        console.error('❌ localStorage also failed:', localError);
+        setHistory([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -1422,7 +1433,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
-            <p className="text-sm text-gray-600">☁️ Synced with Vercel Cloud + Local Storage</p>
+            <p className="text-sm text-gray-600">💾 Saved locally + ☁️ Cloud sync (if available)</p>
           </div>
           <button
             onClick={loadHistory}
