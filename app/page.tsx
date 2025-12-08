@@ -34,6 +34,7 @@ interface SavedComparison {
   businessActivity?: string;
   location?: string;
   propertyLimit?: string;
+  enquiryNumber?: string;
 }
 
 // ============ CONSTANTS ============
@@ -229,9 +230,11 @@ const getLineDefaults = (insuranceLine: string) => {
 };
 
 // ============ UTILITY FUNCTIONS ============
-const calculateVAT = (premium: number, policyFee: number = 0) => {
+const calculateVAT = (premium: number, policyFee: number = 0, insuranceLine?: string) => {
   const subtotal = premium + policyFee;
-  const vat = subtotal * 0.05;
+  // No VAT for GLPA insurance
+  const vatRate = insuranceLine === 'glpa' ? 0 : 0.05;
+  const vat = subtotal * vatRate;
   const total = subtotal + vat;
   return { vat: parseFloat(vat.toFixed(2)), total: parseFloat(total.toFixed(2)) };
 };
@@ -273,6 +276,7 @@ function QuoteGeneratorPage({
   const [businessActivity, setBusinessActivity] = useState('');
   const [location, setLocation] = useState('');
   const [propertyLimit, setPropertyLimit] = useState('');
+  const [enquiryNumber, setEnquiryNumber] = useState('');
   const [advisorComment, setAdvisorComment] = useState('');
   
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
@@ -342,6 +346,7 @@ function QuoteGeneratorPage({
     setBusinessActivity(comparison.businessActivity || '');
     setLocation(comparison.location || '');
     setPropertyLimit(comparison.propertyLimit || '');
+    setEnquiryNumber(comparison.enquiryNumber || '');
     setAdvisorComment(comparison.advisorComment || '');
     
     // Load quotes and companies
@@ -407,7 +412,7 @@ function QuoteGeneratorPage({
     
     // Recalculate VAT and total if premium or policy fee changes
     if (field === 'premium' || field === 'policyFee') {
-      const { vat, total } = calculateVAT(newQuotes[index].premium, newQuotes[index].policyFee);
+      const { vat, total } = calculateVAT(newQuotes[index].premium, newQuotes[index].policyFee, insuranceLine);
       newQuotes[index].vat = vat;
       newQuotes[index].total = total;
     }
@@ -425,42 +430,6 @@ function QuoteGeneratorPage({
       newQuotes[quoteIndex].conditions = [...currentConditions, condition];
     }
     
-    setQuotes(newQuotes);
-  };
-
-  // Add custom condition
-  const addCustomCondition = (quoteIndex: number, newCondition: string) => {
-    if (newCondition.trim()) {
-      const newQuotes = [...quotes];
-      if (!newQuotes[quoteIndex].conditions.includes(newCondition.trim())) {
-        newQuotes[quoteIndex].conditions = [...newQuotes[quoteIndex].conditions, newCondition.trim()];
-        setQuotes(newQuotes);
-      }
-    }
-  };
-
-  // Remove condition
-  const removeCondition = (quoteIndex: number, condition: string) => {
-    const newQuotes = [...quotes];
-    newQuotes[quoteIndex].conditions = newQuotes[quoteIndex].conditions.filter(c => c !== condition);
-    setQuotes(newQuotes);
-  };
-
-  // Add custom exclusion
-  const addCustomExclusion = (quoteIndex: number, newExclusion: string) => {
-    if (newExclusion.trim()) {
-      const newQuotes = [...quotes];
-      if (!newQuotes[quoteIndex].exclusions.includes(newExclusion.trim())) {
-        newQuotes[quoteIndex].exclusions = [...newQuotes[quoteIndex].exclusions, newExclusion.trim()];
-        setQuotes(newQuotes);
-      }
-    }
-  };
-
-  // Remove exclusion
-  const removeExclusion = (quoteIndex: number, exclusion: string) => {
-    const newQuotes = [...quotes];
-    newQuotes[quoteIndex].exclusions = newQuotes[quoteIndex].exclusions.filter(e => e !== exclusion);
     setQuotes(newQuotes);
   };
 
@@ -489,6 +458,7 @@ function QuoteGeneratorPage({
       businessActivity,
       location,
       propertyLimit,
+      enquiryNumber,
       quotes,
       advisorComment,
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
@@ -534,6 +504,7 @@ function QuoteGeneratorPage({
     setBusinessActivity('');
     setLocation('');
     setPropertyLimit('');
+    setEnquiryNumber('');
     setAdvisorComment('');
     setQuotes([]);
     setAvailableCompanies([]);
@@ -545,7 +516,10 @@ function QuoteGeneratorPage({
   };
 
   const downloadComparison = (comparison: SavedComparison) => {
-    // Create HTML content with branding page first
+    // Check if GLPA insurance for VAT handling
+    const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
+    
+    // Create HTML content without branding page, single page layout
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -554,238 +528,188 @@ function QuoteGeneratorPage({
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${comparison.insuranceLine} - Insurance Comparison</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
-        .page:last-child { page-break-after: auto; }
-        
-        /* First Page - Branding */
-        .branding-page { 
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center;
-            min-height: 100vh;
-            padding: 40px;
-        }
-        .branding-page img { 
-            max-width: 90%; 
-            max-height: 80vh; 
-            width: auto; 
-            height: auto; 
-            border-radius: 15px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
-            margin-bottom: 30px;
-        }
-        .branding-title {
-            font-size: 36px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 15px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        .branding-subtitle {
-            font-size: 20px;
-            color: #7f8c8d;
-            margin-bottom: 30px;
-        }
-        .branding-footer {
-            background: rgba(255,255,255,0.9);
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .branding-footer h3 {
-            color: #2c3e50;
-            margin-top: 0;
-            font-size: 24px;
-        }
-        .branding-footer p {
-            color: #34495e;
-            margin: 10px 0;
-            font-size: 16px;
-        }
-
-        /* Second Page - Comparison Data */
-        .comparison-page { background: #f8f9fa; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-        .title { font-size: 24px; font-weight: bold; margin-bottom: 10px; }
-        .ref-date { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; }
-        .customer-details { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; }
-        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        body { font-family: Arial, sans-serif; margin: 10px; background: #fff; }
+        .container { max-width: 100%; margin: 0; padding: 15px; }
+        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
+        .ref-date { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
+        .customer-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; page-break-inside: avoid; }
+        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 0; font-size: 16px; }
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px; }
         .detail-item { }
         .detail-label { font-weight: bold; color: #555; }
         .detail-value { color: #333; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-        th { background: #4472C4; color: white; padding: 15px 10px; text-align: center; border: 1px solid #ddd; font-weight: bold; }
-        td { padding: 12px 10px; border: 1px solid #ddd; vertical-align: top; }
-        .sno { text-align: center; font-weight: bold; background: #f8f9fa; }
-        .particulars { font-weight: bold; background: #f8f9fa; }
+        
+        /* Optimized table for single page */
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 20px; 
+            font-size: 11px;
+            page-break-inside: avoid;
+        }
+        th { 
+            background: #4472C4; 
+            color: white; 
+            padding: 8px 4px; 
+            text-align: center; 
+            border: 1px solid #ddd; 
+            font-weight: bold; 
+            font-size: 11px;
+        }
+        td { 
+            padding: 6px 4px; 
+            border: 1px solid #ddd; 
+            vertical-align: top; 
+            font-size: 10px;
+            line-height: 1.3;
+        }
+        .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
+        .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .conditions-list, .exclusions-list { font-size: 12px; line-height: 1.4; }
-        .conditions-list li, .exclusions-list li { margin-bottom: 3px; }
-        .advisor-comment { background: #FFC000; color: #333; padding: 15px; border-radius: 8px; margin-top: 20px; }
-        .advisor-comment h4 { margin-top: 0; color: #333; }
-        .summary { background: #e8f5e8; padding: 20px; border-radius: 8px; margin-top: 30px; }
+        .conditions-list, .exclusions-list { font-size: 9px; line-height: 1.2; }
+        .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
+        .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
+        .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
         
         @media print { 
-            body { margin: 0; } 
-            .page { margin: 0; padding: 20px; }
-            .container { box-shadow: none; } 
+            body { margin: 0; font-size: 10px; } 
+            .container { padding: 10px; }
+            table { font-size: 9px; }
+            td { padding: 4px 2px; }
+            th { padding: 6px 2px; }
         }
     </style>
 </head>
 <body>
-    <!-- FIRST PAGE: NSIB Branding -->
-    <div class="page branding-page">
-        <div class="branding-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="branding-subtitle">Professional Insurance Solutions</div>
-        
-        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" />
-        
-        <div class="branding-footer">
-            <h3>Insurance Comparison Report</h3>
-            <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
-            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-            <p><strong>Customer:</strong> ${comparison.customerName}</p>
-            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
-            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+    <div class="container">
+        <div class="header">
+            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
         </div>
-    </div>
+        
+        <div class="ref-date">
+            <span>Reference: ${comparison.referenceNumber}</span>
+            <span>Date: ${comparison.date.substring(0, 10)}</span>
+        </div>
 
-    <!-- SECOND PAGE: Comparison Details -->
-    <div class="page comparison-page">
-        <div class="container">
-            <div class="header">
-                <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
-            </div>
-            
-            <div class="ref-date">
-                <span>Reference: ${comparison.referenceNumber}</span>
-                <span>Date: ${comparison.date.substring(0, 10)}</span>
-            </div>
-
-            <div class="customer-details">
-                <h3>Customer Information</h3>
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Customer Name:</div>
-                        <div class="detail-value">${comparison.customerName || 'N/A'}</div>
-                    </div>
-                    ${comparison.address ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Address:</div>
-                        <div class="detail-value">${comparison.address}</div>
-                    </div>` : ''}
-                    ${comparison.businessActivity ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Business Activity:</div>
-                        <div class="detail-value">${comparison.businessActivity}</div>
-                    </div>` : ''}
-                    ${comparison.location ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Location/Premises:</div>
-                        <div class="detail-value">${comparison.location}</div>
-                    </div>` : ''}
-                    ${comparison.propertyLimit ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Property Limit:</div>
-                        <div class="detail-value">${comparison.propertyLimit}</div>
-                    </div>` : ''}
+        <div class="customer-details">
+            <h3>Customer Information</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Customer Name:</div>
+                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
                 </div>
+                ${comparison.address ? `
+                <div class="detail-item">
+                    <div class="detail-label">Address:</div>
+                    <div class="detail-value">${comparison.address}</div>
+                </div>` : ''}
+                ${comparison.businessActivity ? `
+                <div class="detail-item">
+                    <div class="detail-label">Business Activity:</div>
+                    <div class="detail-value">${comparison.businessActivity}</div>
+                </div>` : ''}
+                ${comparison.location ? `
+                <div class="detail-item">
+                    <div class="detail-label">Location/Premises:</div>
+                    <div class="detail-value">${comparison.location}</div>
+                </div>` : ''}
+                ${comparison.enquiryNumber ? `
+                <div class="detail-item">
+                    <div class="detail-label">Enquiry Number:</div>
+                    <div class="detail-value">${comparison.enquiryNumber}</div>
+                </div>` : ''}
+                ${comparison.propertyLimit ? `
+                <div class="detail-item">
+                    <div class="detail-label">Property Limit:</div>
+                    <div class="detail-value">${comparison.propertyLimit}</div>
+                </div>` : ''}
             </div>
+        </div>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 80px;">S.No.</th>
-                        <th style="width: 200px;">Particulars</th>
-                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td class="sno">1</td>
-                        <td class="particulars">Scope of Cover</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">2</td>
-                        <td class="particulars">Geographical Limits</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">3</td>
-                        <td class="particulars">Conditions/Extensions</td>
-                        ${comparison.quotes.map(quote => `
-                            <td>
-                                <ul class="conditions-list">
-                                    ${quote.conditions.map(condition => `<li>• ${condition}</li>`).join('')}
-                                </ul>
-                            </td>
-                        `).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">4</td>
-                        <td class="particulars">Main Exclusions</td>
-                        ${comparison.quotes.map(quote => `
-                            <td>
-                                <ul class="exclusions-list">
-                                    ${quote.exclusions.map(exclusion => `<li>• ${exclusion}</li>`).join('')}
-                                </ul>
-                            </td>
-                        `).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">5</td>
-                        <td class="particulars">Deductible</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">6</td>
-                        <td class="particulars">Premium Rate</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">7</td>
-                        <td class="particulars">Premium (AED)</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">8</td>
-                        <td class="particulars">Policy Fee (AED)</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">9</td>
-                        <td class="particulars">VAT (5%)</td>
-                        ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
-                    </tr>
-                    <tr style="background: #f0f8ff; font-weight: bold;">
-                        <td class="sno">10</td>
-                        <td class="particulars">Total (AED)</td>
-                        ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
-                    </tr>
-                </tbody>
-            </table>
+        <table>
+            <thead>
+                <tr>
+                    <th class="sno">S.No.</th>
+                    <th class="particulars">Particulars</th>
+                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="sno">1</td>
+                    <td class="particulars">Scope of Cover</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">2</td>
+                    <td class="particulars">Geographical Limits</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">3</td>
+                    <td class="particulars">Conditions/Extensions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">4</td>
+                    <td class="particulars">Main Exclusions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">5</td>
+                    <td class="particulars">Deductible</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">6</td>
+                    <td class="particulars">Premium Rate</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">7</td>
+                    <td class="particulars">Premium (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">8</td>
+                    <td class="particulars">Policy Fee (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
+                </tr>
+                ${!isGLPA ? `<tr>
+                    <td class="sno">9</td>
+                    <td class="particulars">VAT (5%)</td>
+                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
+                </tr>` : ''}
+                <tr style="background: #f0f8ff; font-weight: bold;">
+                    <td class="sno">${!isGLPA ? '10' : '9'}</td>
+                    <td class="particulars">Total (AED)</td>
+                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
+                </tr>
+            </tbody>
+        </table>
 
-            ${comparison.advisorComment ? `
-            <div class="advisor-comment">
-                <h4>Advisor Comment:</h4>
-                <p>${comparison.advisorComment}</p>
-            </div>` : ''}
+        ${comparison.advisorComment ? `
+        <div class="advisor-comment">
+            <h4>Advisor Comment:</h4>
+            <p>${comparison.advisorComment}</p>
+        </div>` : ''}
 
-            <div class="summary">
-                <h3>Summary</h3>
-                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
-            </div>
+        <div class="summary">
+            <h3>Summary</h3>
+            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
         </div>
     </div>
 </body>
@@ -890,6 +814,17 @@ function QuoteGeneratorPage({
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     placeholder="Enter location"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold mb-1 text-gray-800">Enquiry Number</label>
+                  <input
+                    type="text"
+                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                    value={enquiryNumber}
+                    onChange={(e) => setEnquiryNumber(e.target.value)}
+                    placeholder="Enter enquiry number"
                   />
                 </div>
 
@@ -1031,93 +966,34 @@ function QuoteGeneratorPage({
 
                         <div>
                           <label className="block text-xs font-bold mb-1 text-gray-800">Conditions/Extensions</label>
-                          <div className="bg-white p-2 rounded border max-h-48 overflow-y-auto">
-                            {/* Default conditions */}
-                            <div className="mb-2">
-                              <p className="text-xs font-bold text-blue-600 mb-1">Default Conditions:</p>
-                              {getLineDefaults(insuranceLine).conditions.map((condition, condIdx) => (
-                                <label key={condIdx} className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer mb-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={quote.conditions.includes(condition)}
-                                    onChange={() => toggleCondition(idx, condition)}
-                                  />
-                                  <span className="flex-1">{condition}</span>
-                                </label>
-                              ))}
-                            </div>
-                            
-                            {/* Custom conditions */}
-                            {quote.conditions.filter(c => !getLineDefaults(insuranceLine).conditions.includes(c)).length > 0 && (
-                              <div className="mb-2 border-t pt-2">
-                                <p className="text-xs font-bold text-green-600 mb-1">Custom Conditions:</p>
-                                {quote.conditions.filter(c => !getLineDefaults(insuranceLine).conditions.includes(c)).map((condition, condIdx) => (
-                                  <div key={condIdx} className="flex items-center gap-2 text-xs text-gray-800 mb-1 bg-green-50 p-1 rounded">
-                                    <span className="flex-1">• {condition}</span>
-                                    <button
-                                      onClick={() => removeCondition(idx, condition)}
-                                      className="text-red-600 hover:text-red-800"
-                                      title="Remove condition"
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            
-                            {/* Add custom condition */}
-                            <div className="border-t pt-2">
-                              <input
-                                type="text"
-                                placeholder="Add custom condition..."
-                                className="w-full p-1 border border-gray-300 rounded text-xs"
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
-                                    addCustomCondition(idx, e.currentTarget.value);
-                                    e.currentTarget.value = '';
-                                  }
-                                }}
-                              />
-                              <p className="text-xs text-gray-500 mt-1">Press Enter to add</p>
-                            </div>
+                          <div className="bg-white p-2 rounded border">
+                            <textarea
+                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px]"
+                              value={quote.conditions.join('\n• ')}
+                              onChange={(e) => {
+                                const lines = e.target.value.split('\n').map(line => line.replace(/^•\s*/, '').trim()).filter(line => line);
+                                updateQuote(idx, 'conditions', lines);
+                              }}
+                              placeholder="Enter conditions/extensions (one per line, bullet points will be added automatically)"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions • Edit directly or add new lines</p>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions selected</p>
                         </div>
 
                         <div>
                           <label className="block text-xs font-bold mb-1 text-gray-800">Main Exclusions</label>
-                          <div className="bg-red-50 p-2 rounded border border-red-200 max-h-48 overflow-y-auto">
-                            {quote.exclusions.map((exclusion, exIdx) => (
-                              <div key={exIdx} className="flex items-center gap-2 mb-1 text-xs text-gray-700">
-                                <span className="flex-1">• {exclusion}</span>
-                                <button
-                                  onClick={() => removeExclusion(idx, exclusion)}
-                                  className="text-red-600 hover:text-red-800"
-                                  title="Remove exclusion"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
-                            
-                            {/* Add custom exclusion */}
-                            <div className="border-t border-red-200 pt-2">
-                              <input
-                                type="text"
-                                placeholder="Add custom exclusion..."
-                                className="w-full p-1 border border-gray-300 rounded text-xs"
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
-                                    addCustomExclusion(idx, e.currentTarget.value);
-                                    e.currentTarget.value = '';
-                                  }
-                                }}
-                              />
-                              <p className="text-xs text-gray-500 mt-1">Press Enter to add</p>
-                            </div>
+                          <div className="bg-red-50 p-2 rounded border border-red-200">
+                            <textarea
+                              className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px]"
+                              value={quote.exclusions.join('\n• ')}
+                              onChange={(e) => {
+                                const lines = e.target.value.split('\n').map(line => line.replace(/^•\s*/, '').trim()).filter(line => line);
+                                updateQuote(idx, 'exclusions', lines);
+                              }}
+                              placeholder="Enter main exclusions (one per line, bullet points will be added automatically)"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions • Edit directly or add new lines</p>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions listed</p>
                         </div>
 
                         <div>
@@ -1164,14 +1040,29 @@ function QuoteGeneratorPage({
                         </div>
 
                         <div className="bg-indigo-50 p-2 rounded">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-bold text-gray-700">VAT (5%):</span>
-                            <span className="font-bold text-gray-900">AED {quote.vat.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between text-sm border-t border-indigo-200 pt-1">
-                            <span className="font-bold text-indigo-700">Total:</span>
-                            <span className="font-bold text-indigo-700">AED {quote.total.toFixed(2)}</span>
-                          </div>
+                          {insuranceLine === 'glpa' ? (
+                            <>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="font-bold text-gray-700">VAT:</span>
+                                <span className="font-bold text-gray-900">Not Applicable</span>
+                              </div>
+                              <div className="flex justify-between text-sm border-t border-indigo-200 pt-1">
+                                <span className="font-bold text-indigo-700">Total:</span>
+                                <span className="font-bold text-indigo-700">AED {quote.total.toFixed(2)}</span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="font-bold text-gray-700">VAT (5%):</span>
+                                <span className="font-bold text-gray-900">AED {quote.vat.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm border-t border-indigo-200 pt-1">
+                                <span className="font-bold text-indigo-700">Total:</span>
+                                <span className="font-bold text-indigo-700">AED {quote.total.toFixed(2)}</span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
