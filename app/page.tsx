@@ -100,95 +100,85 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
     "scopeOfCover": "To indemnify the insured against all sums up to the limit of indemnity specified under the policy which the insured shall become legally liable to pay as damages in respect of accidental bodily injury to any third party or to any third party property damage happening during the period of insurance arising out of their normal course of business activity anywhere within UAE",
     "geographicalLimits": "United Arab Emirates",
     "conditions": [
-      "Tennent's liability",
-      "Cross Liability Clause",
-      "Including liability arising from bodily injury",
-      "Including liability arising from Fire and/or explosion",
-      "Including pollution caused by accidental and sudden discharge",
-      "Including Tenants Liability up to the policy limits",
-      "Legal & Defense costs included within the Limits of Indemnity",
-      "Waiver of subrogation against insured parties"
+      "Including Legal and defense Costs cover. Any other type of accidental loss in our premises",
+      "Product recall costs",
+      "Cross liability clause",
+      "Indemnity to principals clause"
     ],
     "exclusions": [
       "War Risks, Pollution Risk, Nuclear Risk",
       "Coronavirus exclusion - Communicable disease exclusion",
-      "Professional Liability",
-      "Contractual Liability",
-      "Product Liability (unless specified)"
+      "Product liability/defect",
+      "Professional Indemnity",
+      "Contractual liability",
+      "Employer's liability"
     ],
-    "deductible": "AED 1,000/- each and every claim"
+    "deductible": "AED 2,500 each and every loss"
   },
   "wcel": {
-    "companies": ["AWNIC", "Sukoon", "ORIENT", "AIG"],
-    "scopeOfCover": "Workmen's Compensation as per UAE Labor Law / Employer's Liability as per Common and/or Sharia Law : Occurrence Form",
+    "companies": ["Sukoon", "IH", "AIG", "UNION"],
+    "scopeOfCover": "To indemnify the Assured under Workmen's Compensation as per UAE Labor Law / Employer's Liability as per Common and/or Sharia Law",
     "geographicalLimits": "United Arab Emirates",
     "conditions": [
-      "Repatriation Expenses - AED 35,000 per person including accompanying person",
-      "Employer's Liability with a limit of AED 1,000,000/- AOO",
-      "Defense costs within limits",
-      "Including 24 hours non-work related accidents",
-      "Including transportation of employees to and from work place",
-      "Including work during overtime and public holidays",
-      "Including Sunstroke and Hernia resulting from work related activities",
-      "Employee to Employee Liability Clause",
-      "Accidental Medical Expenses - AED 50,000/- per person"
+      "Workmen's Compensation as per UAE Labor Law / Employer's Liability as per Common and/or Sharia Law",
+      "Coverage for all nationalities",
+      "24 hours coverage worldwide",
+      "Repatriation expenses",
+      "Medical expenses coverage"
     ],
     "exclusions": [
       "War Risks, Pollution Risk, Nuclear Risk",
       "Coronavirus exclusion - Communicable disease exclusion",
+      "Offshore workers",
+      "Workers above 65 years",
+      "Pre-existing medical conditions"
+    ],
+    "deductible": "NIL"
+  },
+  "car": {
+    "companies": ["AIG", "IH", "RSA", "Orient UNB"],
+    "scopeOfCover": "To indemnify the insured for accidental physical loss or damage to the contract works, construction plant and equipment, temporary buildings and other property for the completion of contract works including the period of maintenance",
+    "geographicalLimits": "United Arab Emirates",
+    "conditions": [
+      "72 Hours Clause",
+      "Reinstatement Value Clause",
+      "Debris Removal Clause - Limited to 10% of Claim amount",
+      "Including loss due to Riot, Strike and Civil Commotion",
+      "Including fire explosion lightning, earthquake",
+      "Storm, Flood, Tempest, Sand Storm",
+      "Third Party Liability arising out of the contract works"
+    ],
+    "exclusions": [
+      "War Risks, Pollution Risk, Nuclear Risk",
+      "Coronavirus exclusion - Communicable disease exclusion",
+      "Design defects",
+      "Principals existing & surrounding properties",
       "Any offshore works / works on ships etc.",
       "Pure Financial Loss/ Consequential Loss"
     ],
-    "deductible": "As per policy terms"
-  },
-  "car": {
-    "companies": ["Sukoon", "AWNIC", "ORIENT", "UNION"],
-    "scopeOfCover": "Combined single limit for Death/Bodily injury and TPPD as per Munich Re Contractor's All Risks Policy wordings",
-    "geographicalLimits": "United Arab Emirates",
-    "conditions": [
-      "Cover for Cross Liability - (Mre 002)",
-      "Extended Maintenance Cover: 6 months (Mre 004)",
-      "Cover for Extra Charges for Overtime, Night work, Express Freight: upto 5% (Mre 006)",
-      "Special conditions concerning Underground Cables, Pipes & other facilities-Mre102",
-      "Warranty Concerning Construction Material - (Mre 009)",
-      "Safety Measures with respect to flood and inundation - (Mre 110)",
-      "Cover for Vibration, Removal or Weakening of Support upto AED 500,000/-",
-      "Fire Fighting Facilities & Fire Safety on Construction Sites",
-      "Professional Fees Clause - Upto 5% of the Claim Amount",
-      "Debris Removal Clause - Upto 10% of the Claim Amount"
-    ],
-    "exclusions": [
-      "War Risks, Pollution Risk, Nuclear Risk",
-      "Existing structures and surrounding properties",
-      "Design errors and defects",
-      "Pure Financial Loss/ Consequential Loss"
-    ],
-    "deductible": "As per project specifications"
+    "deductible": "AED 5,000 each and every loss"
   },
   "cpm": {
-    "companies": ["AWNIC", "IH", "DNIRC", "NGI"],
-    "scopeOfCover": "Contractors Plant & Equipment against any unforeseen and sudden physical loss or damage from any cause not specifically excluded under the Policy. As per Standard policy wording of Munich re.",
+    "companies": ["AIG", "IH", "RSA", "Orient UNB"],
+    "scopeOfCover": "To indemnify the insured for accidental physical loss or damage to contractor's plant and machinery whilst on site and in transit within UAE",
     "geographicalLimits": "United Arab Emirates",
     "conditions": [
-      "Cover extended to include Tool of Trade Extension up to a limit of AED 1,000,000/-",
-      "Debris Removal 10% of the claim Amount subject to maximum AED 100,000/-",
-      "Extended to cover Riot & Strike, civil Commotion",
-      "Inland Transit Clause - Including Loading and Unloading",
-      "Cover of Any extra charges incurred overtime, night work, work on public holidays",
-      "Coverage for loading / unloading / dismantling / Erection / commissioning & testing",
-      "Including loss or damage due to Fire, Lightning, explosion, storm and tempest",
-      "Temporary removal - Limit 10% of Sum Insured"
+      "On site and in transit coverage",
+      "Theft coverage",
+      "Breakdown coverage",
+      "Third party liability coverage"
     ],
     "exclusions": [
       "War Risks, Pollution Risk, Nuclear Risk",
       "Coronavirus exclusion - Communicable disease exclusion",
-      "Mechanical or electrical breakdown (unless Breakdown cover included)",
-      "Normal wear and tear"
+      "Mechanical/electrical breakdown",
+      "Normal wear and tear",
+      "Any offshore works / works on ships etc."
     ],
-    "deductible": "As per policy terms"
+    "deductible": "AED 2,500 each and every loss"
   },
   "glpa": {
-    "companies": ["ABNIC", "ALLIANCE", "ORIENT", "UNION"],
+    "companies": ["ABNIC", "ALLIANCE"],
     "scopeOfCover": "To indemnify the Assured in respect of Group Life and Personal Accident benefits arising from Death due to any cause and Disability due to accident & sickness occurring during the policy period",
     "geographicalLimits": "24 hours Worldwide Cover On and Off duty",
     "conditions": [
@@ -212,23 +202,6 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
   }
 };
 
-// Get insurance companies for selected line
-const getInsuranceCompanies = (insuranceLine: string): string[] => {
-  return INSURANCE_DEFAULTS[insuranceLine]?.companies || [];
-};
-
-// Get default values for insurance line
-const getLineDefaults = (insuranceLine: string) => {
-  return INSURANCE_DEFAULTS[insuranceLine] || {
-    companies: [],
-    scopeOfCover: '',
-    geographicalLimits: 'United Arab Emirates',
-    conditions: [],
-    exclusions: [],
-    deductible: ''
-  };
-};
-
 // ============ UTILITY FUNCTIONS ============
 const calculateVAT = (premium: number, policyFee: number = 0, insuranceLine?: string) => {
   const subtotal = premium + policyFee;
@@ -241,23 +214,37 @@ const calculateVAT = (premium: number, policyFee: number = 0, insuranceLine?: st
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('en-GB', { 
-    day: '2-digit', 
-    month: 'short', 
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
 const generateReferenceNumber = () => {
   const date = new Date();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  const random = Math.floor(Math.random() * 9000) + 1000;
   return `GI-${year}${month}${day}-${random}`;
+};
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const getInsuranceCompanies = (lineValue: string): string[] => {
+  return INSURANCE_DEFAULTS[lineValue]?.companies || [];
+};
+
+const getLineDefaults = (lineValue: string) => {
+  return INSURANCE_DEFAULTS[lineValue] || {
+    scopeOfCover: '',
+    geographicalLimits: '',
+    conditions: [],
+    exclusions: [],
+    deductible: ''
+  };
 };
 
 // ============ QUOTE GENERATOR PAGE ============
@@ -380,11 +367,12 @@ function QuoteGeneratorPage({
 
   const createEmptyQuote = (company: string): Quote => {
     const defaults = getLineDefaults(insuranceLine);
+    const { vat, total } = calculateVAT(0, 0, insuranceLine);
     
     return {
       id: generateId(),
       company,
-      scopeOfCover: defaults.scopeOfCover || 'All assets of the Insured',
+      scopeOfCover: defaults.scopeOfCover || '',
       geographicalLimits: defaults.geographicalLimits || 'United Arab Emirates',
       conditions: [...defaults.conditions],
       exclusions: [...defaults.exclusions],
@@ -392,8 +380,8 @@ function QuoteGeneratorPage({
       premiumRate: '',
       premium: 0,
       policyFee: 0,
-      vat: 0,
-      total: 0,
+      vat: vat,
+      total: total,
       isRecommended: false
     };
   };
@@ -1108,31 +1096,232 @@ function QuoteGeneratorPage({
 // ============ SAVED HISTORY PAGE ============
 function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison: SavedComparison) => void }) {
   const [history, setHistory] = useState<SavedComparison[]>([]);
-  const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
 
   useEffect(() => {
-    loadHistory();
+    const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+    setHistory(savedHistory);
   }, []);
-
-  const loadHistory = () => {
-    const saved = localStorage.getItem('generalInsuranceHistory');
-    if (saved) {
-      setHistory(JSON.parse(saved));
-    }
-  };
 
   const deleteComparison = (id: string) => {
     if (confirm('Are you sure you want to delete this comparison?')) {
-      const newHistory = history.filter(c => c.id !== id);
-      localStorage.setItem('generalInsuranceHistory', JSON.stringify(newHistory));
-      setHistory(newHistory);
+      const updatedHistory = history.filter(comp => comp.id !== id);
+      setHistory(updatedHistory);
+      localStorage.setItem('generalInsuranceHistory', JSON.stringify(updatedHistory));
     }
   };
 
-  const downloadComparisonFromHistory = async (comparison: SavedComparison) => {
-    // Reuse the download function from QuoteGeneratorPage
-    // Implementation would be similar
-    alert('Download feature - Excel file generation');
+  const downloadComparison = (comparison: SavedComparison) => {
+    // Check if GLPA insurance for VAT handling
+    const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
+    
+    // Create HTML content without branding page, single page layout
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${comparison.insuranceLine} - Insurance Comparison</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 10px; background: #fff; }
+        .container { max-width: 100%; margin: 0; padding: 15px; }
+        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
+        .ref-date { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
+        .customer-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; page-break-inside: avoid; }
+        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 0; font-size: 16px; }
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px; }
+        .detail-item { }
+        .detail-label { font-weight: bold; color: #555; }
+        .detail-value { color: #333; }
+        
+        /* Optimized table for single page */
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 20px; 
+            font-size: 11px;
+            page-break-inside: avoid;
+        }
+        th { 
+            background: #4472C4; 
+            color: white; 
+            padding: 8px 4px; 
+            text-align: center; 
+            border: 1px solid #ddd; 
+            font-weight: bold; 
+            font-size: 11px;
+        }
+        td { 
+            padding: 6px 4px; 
+            border: 1px solid #ddd; 
+            vertical-align: top; 
+            font-size: 10px;
+            line-height: 1.3;
+        }
+        .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
+        .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
+        .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
+        .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .conditions-list, .exclusions-list { font-size: 9px; line-height: 1.2; }
+        .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
+        .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
+        .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
+        
+        @media print { 
+            body { margin: 0; font-size: 10px; } 
+            .container { padding: 10px; }
+            table { font-size: 9px; }
+            td { padding: 4px 2px; }
+            th { padding: 6px 2px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
+        </div>
+        
+        <div class="ref-date">
+            <span>Reference: ${comparison.referenceNumber}</span>
+            <span>Date: ${comparison.date.substring(0, 10)}</span>
+        </div>
+
+        <div class="customer-details">
+            <h3>Customer Information</h3>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Customer Name:</div>
+                    <div class="detail-value">${comparison.customerName || 'N/A'}</div>
+                </div>
+                ${comparison.address ? `
+                <div class="detail-item">
+                    <div class="detail-label">Address:</div>
+                    <div class="detail-value">${comparison.address}</div>
+                </div>` : ''}
+                ${comparison.businessActivity ? `
+                <div class="detail-item">
+                    <div class="detail-label">Business Activity:</div>
+                    <div class="detail-value">${comparison.businessActivity}</div>
+                </div>` : ''}
+                ${comparison.location ? `
+                <div class="detail-item">
+                    <div class="detail-label">Location/Premises:</div>
+                    <div class="detail-value">${comparison.location}</div>
+                </div>` : ''}
+                ${comparison.enquiryNumber ? `
+                <div class="detail-item">
+                    <div class="detail-label">Enquiry Number:</div>
+                    <div class="detail-value">${comparison.enquiryNumber}</div>
+                </div>` : ''}
+                ${comparison.propertyLimit ? `
+                <div class="detail-item">
+                    <div class="detail-label">Property Limit:</div>
+                    <div class="detail-value">${comparison.propertyLimit}</div>
+                </div>` : ''}
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th class="sno">S.No.</th>
+                    <th class="particulars">Particulars</th>
+                    ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="sno">1</td>
+                    <td class="particulars">Scope of Cover</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">2</td>
+                    <td class="particulars">Geographical Limits</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">3</td>
+                    <td class="particulars">Conditions/Extensions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            ${quote.conditions.map(condition => `• ${condition}`).join('<br>')}
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">4</td>
+                    <td class="particulars">Main Exclusions</td>
+                    ${comparison.quotes.map(quote => `
+                        <td>
+                            ${quote.exclusions.map(exclusion => `• ${exclusion}`).join('<br>')}
+                        </td>
+                    `).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">5</td>
+                    <td class="particulars">Deductible</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">6</td>
+                    <td class="particulars">Premium Rate</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">7</td>
+                    <td class="particulars">Premium (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td class="sno">8</td>
+                    <td class="particulars">Policy Fee (AED)</td>
+                    ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
+                </tr>
+                ${!isGLPA ? `<tr>
+                    <td class="sno">9</td>
+                    <td class="particulars">VAT (5%)</td>
+                    ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
+                </tr>` : ''}
+                <tr style="background: #f0f8ff; font-weight: bold;">
+                    <td class="sno">${!isGLPA ? '10' : '9'}</td>
+                    <td class="particulars">Total (AED)</td>
+                    ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
+                </tr>
+            </tbody>
+        </table>
+
+        ${comparison.advisorComment ? `
+        <div class="advisor-comment">
+            <h4>Advisor Comment:</h4>
+            <p>${comparison.advisorComment}</p>
+        </div>` : ''}
+
+        <div class="summary">
+            <h3>Summary</h3>
+            <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
+            <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
+            <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    // Create and download HTML file
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `insurance_comparison_${comparison.referenceNumber}.html`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const downloadComparisonFromHistory = (comparison: SavedComparison) => {
+    downloadComparison(comparison);
   };
 
   return (
