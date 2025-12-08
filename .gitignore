@@ -1,0 +1,19 @@
+# Dependencies
+   node_modules/
+   
+   # Next.js
+   .next/
+   out/
+   
+   # Environment files
+   .env
+   .env.local
+   .env.production
+   
+   # Insurance comparison data storage
+   /data/
+   data/
+   comparisons.json
+   
+   # Logs
+   *.log
