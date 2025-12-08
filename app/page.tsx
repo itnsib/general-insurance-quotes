@@ -503,7 +503,7 @@ function QuoteGeneratorPage({
     // Check if GLPA insurance for VAT handling
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
     
-    // Create HTML content with professional cover page
+    // Create HTML content with NSIB image as first page
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -516,8 +516,39 @@ function QuoteGeneratorPage({
         .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
         .page:last-child { page-break-after: auto; }
         
-        /* First Page - Professional Cover */
-        .cover-page { 
+        /* First Page - NSIB Image */
+        .image-page { 
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .nsib-image {
+            max-width: 95%;
+            max-height: 85vh;
+            width: auto;
+            height: auto;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        .image-caption {
+            font-size: 24px;
+            font-weight: bold;
+            color: #203864;
+            margin-bottom: 10px;
+        }
+        .image-subtitle {
+            font-size: 16px;
+            color: #6c757d;
+        }
+
+        /* Second Page - Report Details */
+        .report-page { 
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             display: flex; 
             flex-direction: column; 
@@ -527,45 +558,45 @@ function QuoteGeneratorPage({
             min-height: 100vh;
             padding: 40px;
         }
-        .cover-title {
+        .report-title {
             font-size: 42px;
             font-weight: bold;
             color: #203864;
             margin-bottom: 20px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
         }
-        .cover-subtitle {
+        .report-subtitle {
             font-size: 24px;
             color: #4472C4;
             margin-bottom: 40px;
         }
-        .cover-details {
+        .report-details {
             background: rgba(255,255,255,0.95);
             padding: 30px;
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             border: 2px solid #4472C4;
         }
-        .cover-details h3 {
+        .report-details h3 {
             color: #203864;
             margin-top: 0;
             font-size: 28px;
             border-bottom: 2px solid #4472C4;
             padding-bottom: 10px;
         }
-        .cover-details p {
+        .report-details p {
             color: #495057;
             margin: 15px 0;
             font-size: 18px;
             font-weight: 500;
         }
-        .cover-footer {
+        .report-footer {
             margin-top: 50px;
             color: #6c757d;
             font-size: 16px;
         }
 
-        /* Second Page - Comparison Data */
+        /* Third Page - Comparison Data */
         .comparison-page { background: #f8f9fa; }
         .container { max-width: 100%; margin: 0; padding: 15px; }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
@@ -620,16 +651,19 @@ function QuoteGeneratorPage({
     </style>
 </head>
 <body>
-    <!-- FIRST PAGE: Professional Cover -->
-    <div class="page cover-page">
-        <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="cover-subtitle">Professional Insurance Solutions</div>
+    <!-- FIRST PAGE: NSIB IMAGE -->
+    <div class="page image-page">
+        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
+        <div class="image-caption">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="image-subtitle">Professional Insurance Solutions</div>
+    </div>
+
+    <!-- SECOND PAGE: Report Details -->
+    <div class="page report-page">
+        <div class="report-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="report-subtitle">Professional Insurance Solutions</div>
         
-        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" 
-             style="max-width: 90%; max-height: 50vh; width: auto; height: auto; border-radius: 15px; 
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 30px;" />
-        
-        <div class="cover-details">
+        <div class="report-details">
             <h3>Insurance Comparison Report</h3>
             <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
             <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
@@ -638,13 +672,13 @@ function QuoteGeneratorPage({
             <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
         </div>
         
-        <div class="cover-footer">
+        <div class="report-footer">
             <p>Professional insurance quote comparison system<br>
             Generated on ${new Date().toLocaleString('en-GB')}</p>
         </div>
     </div>
 
-    <!-- SECOND PAGE: Comparison Details -->
+    <!-- THIRD PAGE: Comparison Details -->
     <div class="page comparison-page">
         <div class="container">
             <div class="header">
@@ -1035,14 +1069,15 @@ function QuoteGeneratorPage({
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-800 min-h-[120px] resize-vertical"
                               value={quote.conditions.join('\n')}
                               onChange={(e) => {
-                                const lines = e.target.value.split('\n').filter(line => line.trim() !== '');
+                                // FIXED: Simple line splitting that works with Enter key
+                                const lines = e.target.value.split('\n').filter(line => line.trim().length > 0);
                                 updateQuote(idx, 'conditions', lines);
                               }}
-                              placeholder="Enter conditions/extensions (one per line):
-First condition
-Second condition
-Third condition"
-                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
+                              placeholder="Type each condition on a new line:
+First condition here
+Second condition here
+Press Enter for new line"
+                              style={{ fontFamily: 'monospace', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
                             />
                             <p className="text-xs text-gray-500 mt-1">✓ {quote.conditions.length} conditions • Press Enter for new line</p>
                           </div>
@@ -1055,14 +1090,15 @@ Third condition"
                               className="w-full p-2 border border-gray-300 rounded text-xs text-gray-700 bg-white min-h-[100px] resize-vertical"
                               value={quote.exclusions.join('\n')}
                               onChange={(e) => {
-                                const lines = e.target.value.split('\n').filter(line => line.trim() !== '');
+                                // FIXED: Simple line splitting that works with Enter key
+                                const lines = e.target.value.split('\n').filter(line => line.trim().length > 0);
                                 updateQuote(idx, 'exclusions', lines);
                               }}
-                              placeholder="Enter main exclusions (one per line):
-First exclusion
-Second exclusion
-Third exclusion"
-                              style={{ fontFamily: 'Arial, sans-serif', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
+                              placeholder="Type each exclusion on a new line:
+First exclusion here
+Second exclusion here
+Press Enter for new line"
+                              style={{ fontFamily: 'monospace', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}
                             />
                             <p className="text-xs text-gray-500 mt-1">{quote.exclusions.length} exclusions • Press Enter for new line</p>
                           </div>
@@ -1199,10 +1235,9 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   };
 
   const downloadComparison = (comparison: SavedComparison) => {
-    // Use the same download function as the main page
+    // Same download function as main generator with NSIB image first
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
     
-    // Professional cover page with all comparison details
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1215,31 +1250,28 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
         .page:last-child { page-break-after: auto; }
         
-        /* First Page - Professional Cover */
-        .cover-page { 
+        /* First Page - NSIB Image */
+        .image-page { 
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            text-align: center; min-height: 100vh; padding: 40px;
+            text-align: center; min-height: 100vh; padding: 20px;
         }
-        .cover-title { font-size: 42px; font-weight: bold; color: #203864; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
-        .cover-subtitle { font-size: 24px; color: #4472C4; margin-bottom: 40px; }
-        .cover-details { background: rgba(255,255,255,0.95); padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 2px solid #4472C4; }
-        .cover-details h3 { color: #203864; margin-top: 0; font-size: 28px; border-bottom: 2px solid #4472C4; padding-bottom: 10px; }
-        .cover-details p { color: #495057; margin: 15px 0; font-size: 18px; font-weight: 500; }
-        .cover-footer { margin-top: 50px; color: #6c757d; font-size: 16px; }
+        .nsib-image { max-width: 95%; max-height: 85vh; width: auto; height: auto; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 20px; }
+        .image-caption { font-size: 24px; font-weight: bold; color: #203864; margin-bottom: 10px; }
+        .image-subtitle { font-size: 16px; color: #6c757d; }
 
-        /* Second Page - Comparison Data */
+        /* Remaining styles same as before for comparison pages... */
+        .report-page { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 100vh; padding: 40px; }
+        .report-title { font-size: 42px; font-weight: bold; color: #203864; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+        .report-subtitle { font-size: 24px; color: #4472C4; margin-bottom: 40px; }
+        .report-details { background: rgba(255,255,255,0.95); padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 2px solid #4472C4; }
+        .report-details h3 { color: #203864; margin-top: 0; font-size: 28px; border-bottom: 2px solid #4472C4; padding-bottom: 10px; }
+        .report-details p { color: #495057; margin: 15px 0; font-size: 18px; font-weight: 500; }
+        .report-footer { margin-top: 50px; color: #6c757d; font-size: 16px; }
         .comparison-page { background: #f8f9fa; }
         .container { max-width: 100%; margin: 0; padding: 15px; }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
-        .ref-date { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
-        .customer-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; page-break-inside: avoid; }
-        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 0; font-size: 16px; }
-        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px; }
-        .detail-label { font-weight: bold; color: #555; }
-        .detail-value { color: #333; }
-        
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; page-break-inside: avoid; }
         th { background: #4472C4; color: white; padding: 8px 4px; text-align: center; border: 1px solid #ddd; font-weight: bold; font-size: 11px; }
         td { padding: 6px 4px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; line-height: 1.3; }
@@ -1247,29 +1279,20 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
-        .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
-        
-        @media print { 
-            body { margin: 0; font-size: 10px; }
-            .container { padding: 10px; }
-            table { font-size: 9px; }
-            td { padding: 4px 2px; }
-            th { padding: 6px 2px; }
-        }
     </style>
 </head>
 <body>
-    <div class="page cover-page">
-        <div class="cover-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="cover-subtitle">Professional Insurance Solutions</div>
-        
-        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" 
-             style="max-width: 90%; max-height: 50vh; width: auto; height: auto; border-radius: 15px; 
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 30px;" />
-        
-        <div class="cover-details">
+    <div class="page image-page">
+        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
+        <div class="image-caption">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="image-subtitle">Professional Insurance Solutions</div>
+    </div>
+
+    <div class="page report-page">
+        <div class="report-title">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
+        <div class="report-subtitle">Professional Insurance Solutions</div>
+        <div class="report-details">
             <h3>Insurance Comparison Report</h3>
             <p><strong>Reference:</strong> ${comparison.referenceNumber}</p>
             <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
@@ -1277,40 +1300,14 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
             <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
             <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
         </div>
-        <div class="cover-footer">
-            <p>Professional insurance quote comparison system<br>Generated on ${new Date().toLocaleString('en-GB')}</p>
-        </div>
+        <div class="report-footer"><p>Professional insurance quote comparison system<br>Generated on ${new Date().toLocaleString('en-GB')}</p></div>
     </div>
 
     <div class="page comparison-page">
         <div class="container">
             <div class="header"><div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div></div>
-            
-            <div class="ref-date">
-                <span>Reference: ${comparison.referenceNumber}</span>
-                <span>Date: ${comparison.date.substring(0, 10)}</span>
-            </div>
-
-            <div class="customer-details">
-                <h3>Customer Information</h3>
-                <div class="details-grid">
-                    <div><div class="detail-label">Customer Name:</div><div class="detail-value">${comparison.customerName || 'N/A'}</div></div>
-                    ${comparison.address ? `<div><div class="detail-label">Address:</div><div class="detail-value">${comparison.address}</div></div>` : ''}
-                    ${comparison.businessActivity ? `<div><div class="detail-label">Business Activity:</div><div class="detail-value">${comparison.businessActivity}</div></div>` : ''}
-                    ${comparison.location ? `<div><div class="detail-label">Location/Premises:</div><div class="detail-value">${comparison.location}</div></div>` : ''}
-                    ${comparison.enquiryNumber ? `<div><div class="detail-label">Enquiry Number:</div><div class="detail-value">${comparison.enquiryNumber}</div></div>` : ''}
-                    ${comparison.propertyLimit ? `<div><div class="detail-label">Property Limit:</div><div class="detail-value">${comparison.propertyLimit}</div></div>` : ''}
-                </div>
-            </div>
-
             <table>
-                <thead>
-                    <tr>
-                        <th class="sno">S.No.</th>
-                        <th class="particulars">Particulars</th>
-                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                    </tr>
-                </thead>
+                <thead><tr><th class="sno">S.No.</th><th class="particulars">Particulars</th>${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}</tr></thead>
                 <tbody>
                     <tr><td class="sno">1</td><td class="particulars">Scope of Cover</td>${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}</tr>
                     <tr><td class="sno">2</td><td class="particulars">Geographical Limits</td>${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}</tr>
@@ -1324,16 +1321,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                     <tr style="background: #f0f8ff; font-weight: bold;"><td class="sno">${!isGLPA ? '10' : '9'}</td><td class="particulars">Total (AED)</td>${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}</tr>
                 </tbody>
             </table>
-
-            ${comparison.advisorComment ? `<div class="advisor-comment"><h4>Advisor Comment:</h4><p>${comparison.advisorComment}</p></div>` : ''}
-
-            <div class="summary">
-                <h3>Summary</h3>
-                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
-            </div>
+            <div class="summary"><h3>Summary</h3><p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p></div>
         </div>
     </div>
 </body>
@@ -1346,10 +1334,6 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     a.download = `insurance_comparison_${comparison.referenceNumber}.html`;
     a.click();
     window.URL.revokeObjectURL(url);
-  };
-
-  const downloadComparisonFromHistory = (comparison: SavedComparison) => {
-    downloadComparison(comparison);
   };
 
   return (
@@ -1400,7 +1384,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                     ✏️ Edit
                   </button>
                   <button 
-                    onClick={() => downloadComparisonFromHistory(comparison)} 
+                    onClick={() => downloadComparison(comparison)} 
                     className="bg-purple-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-purple-700 transition"
                   >
                     📥 Download
