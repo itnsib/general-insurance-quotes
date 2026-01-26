@@ -682,7 +682,7 @@ function QuoteGeneratorPage({
 <body>
     <!-- FIRST PAGE: NSIB IMAGE -->
     <div class="page image-page">
-        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
+        <img src="https://i.imgur.com/j0pz4Ll.png" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
         <div class="image-caption">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
         <div class="image-subtitle">Professional Insurance Solutions</div>
     </div>
