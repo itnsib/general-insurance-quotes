@@ -2,40 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
-// ============ TYPES ============
-interface Quote {
-  id: string;
-  company: string;
-  scopeOfCover: string;
-  geographicalLimits: string;
-  conditions: string[];
-  exclusions: string[];
-  deductible: string;
-  premiumRate: string;
-  premium: number;
-  policyFee: number;
-  vat: number;
-  total: number;
-  isRecommended: boolean;
-}
-
-interface SavedComparison {
-  id: string;
-  date: string;
-  insuranceLine: string;
-  customerName: string;
-  quotes: Quote[];
-  advisorComment?: string;
-  referenceNumber: string;
-  fileUrl?: string;
-  // Additional fields based on insurance line
-  address?: string;
-  businessActivity?: string;
-  location?: string;
-  propertyLimit?: string;
-  enquiryNumber?: string;
-}
+import type { Quote, SavedComparison } from './lib/types';
 
 // ============ CONSTANTS ============
 const INSURANCE_LINES = [
@@ -212,7 +179,16 @@ const calculateVAT = (premium: number, policyFee: number = 0, insuranceLine?: st
   return { vat: parseFloat(vat.toFixed(2)), total: parseFloat(total.toFixed(2)) };
 };
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+// The id becomes the comparison's blob pathname, and the store is public — so
+// the id is what keeps a record's URL unguessable. Math.random() is predictable
+// from previous outputs, so it must not be the source here.
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+};
 
 const generateReferenceNumber = () => {
   const date = new Date();
@@ -278,6 +254,7 @@ function QuoteGeneratorPage({
   // Edit functionality state
   const [isEditing, setIsEditing] = useState(false);
   const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Auto-load comparison when editComparison prop changes
   useEffect(() => {
@@ -468,28 +445,30 @@ function QuoteGeneratorPage({
       referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
 
-    // Save to localStorage (reliable and fast)
+    // Save to shared Blob storage so every advisor sees the same history
+    setSaving(true);
     try {
-      const history = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-      
-      if (isEditing && editingComparison) {
-        // Update existing comparison
-        const index = history.findIndex((comp: SavedComparison) => comp.id === editingComparison.id);
-        if (index !== -1) {
-          history[index] = comparisonData;
-          localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
-        }
-      } else {
-        // Add new comparison
-        history.unshift(comparisonData);
-        localStorage.setItem('generalInsuranceHistory', JSON.stringify(history));
-      }
+      const response = isEditing && editingComparison
+        ? await fetch(`/api/comparisons/${editingComparison.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(comparisonData)
+          })
+        : await fetch('/api/comparisons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(comparisonData)
+          });
 
-      console.log('✅ localStorage save successful');
-    } catch (localError) {
-      console.error('❌ localStorage save failed:', localError);
-      alert('❌ Failed to save comparison. Please try again.');
+      if (!response.ok) {
+        throw new Error(`Server responded ${response.status}`);
+      }
+    } catch (saveError) {
+      console.error('❌ Save failed:', saveError);
+      alert('❌ Failed to save comparison. Please check your connection and try again.');
       return;
+    } finally {
+      setSaving(false);
     }
 
     // Generate HTML file
@@ -1208,13 +1187,17 @@ Press Enter for new line"
             <div className="flex gap-4">
               <button
                 onClick={saveComparison}
-                className="flex-1 bg-green-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-green-700 transition shadow-lg"
+                disabled={saving}
+                className="flex-1 bg-green-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-green-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEditing ? '💾 Save Changes & Download' : '💾 Save & Download Comparison'}
+                {saving
+                  ? '⏳ Saving...'
+                  : isEditing ? '💾 Save Changes & Download' : '💾 Save & Download Comparison'}
               </button>
               <button
                 onClick={resetForm}
-                className="bg-gray-500 text-white px-6 p-4 rounded-lg font-bold hover:bg-gray-600 transition"
+                disabled={saving}
+                className="bg-gray-500 text-white px-6 p-4 rounded-lg font-bold hover:bg-gray-600 transition disabled:opacity-50"
               >
                 🔄 Reset
               </button>
@@ -1230,26 +1213,73 @@ Press Enter for new line"
 function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison: SavedComparison) => void }) {
   const [history, setHistory] = useState<SavedComparison[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [localCount, setLocalCount] = useState(0);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     loadHistory();
+    setLocalCount(readLocalHistory().length);
   }, []);
+
+  // Comparisons saved before the move to shared storage still live in this
+  // browser only. They stay there until the advisor imports them.
+  const readLocalHistory = (): SavedComparison[] => {
+    try {
+      const local = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
+      return Array.isArray(local) ? local : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const importLocalHistory = async () => {
+    const local = readLocalHistory();
+    if (local.length === 0) return;
+
+    setImporting(true);
+    let imported = 0;
+
+    for (const comparison of local) {
+      try {
+        const response = await fetch('/api/comparisons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(comparison)
+        });
+        if (response.ok) imported++;
+      } catch (error) {
+        console.error('Failed to import comparison:', comparison?.referenceNumber, error);
+      }
+    }
+
+    // Keep a backup rather than deleting outright, in case an import went wrong.
+    if (imported === local.length) {
+      localStorage.setItem('generalInsuranceHistoryBackup', JSON.stringify(local));
+      localStorage.removeItem('generalInsuranceHistory');
+      setLocalCount(0);
+    }
+
+    setImporting(false);
+    alert(`Imported ${imported} of ${local.length} comparisons from this browser.`);
+    loadHistory();
+  };
 
   const loadHistory = async () => {
     try {
       setLoading(true);
-      
-      // Load from localStorage
-      const savedHistory = JSON.parse(localStorage.getItem('generalInsuranceHistory') || '[]');
-      
-      // Sort by date, newest first
-      savedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      setHistory(savedHistory);
-      console.log('✅ localStorage data loaded');
-      
+      setLoadError(null);
+
+      // Shared storage — every advisor sees the same list. Already sorted newest first.
+      const response = await fetch('/api/comparisons', { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Server responded ${response.status}`);
+      }
+
+      setHistory(await response.json());
     } catch (error) {
       console.error('❌ Failed to load data:', error);
+      setLoadError('Could not load saved comparisons. Check your connection and try Refresh.');
       setHistory([]);
     } finally {
       setLoading(false);
@@ -1257,10 +1287,19 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   };
 
   const deleteComparison = async (id: string) => {
-    if (confirm('Are you sure you want to delete this comparison?')) {
-      const updatedHistory = history.filter(comp => comp.id !== id);
-      setHistory(updatedHistory);
-      localStorage.setItem('generalInsuranceHistory', JSON.stringify(updatedHistory));
+    if (!confirm('Are you sure you want to delete this comparison? This removes it for everyone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/comparisons/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(`Server responded ${response.status}`);
+      }
+      setHistory(prev => prev.filter(comp => comp.id !== id));
+    } catch (error) {
+      console.error('❌ Failed to delete:', error);
+      alert('❌ Failed to delete comparison. Please try again.');
     }
   };
 
@@ -1360,7 +1399,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
-            <p className="text-sm text-gray-600">💾 Saved locally in your browser</p>
+            <p className="text-sm text-gray-600">☁️ Shared across all advisors</p>
           </div>
           <button
             onClick={loadHistory}
@@ -1371,10 +1410,31 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
           </button>
         </div>
         
+        {localCount > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex justify-between items-center gap-4">
+            <p className="text-sm text-blue-900">
+              📦 <strong>{localCount}</strong> comparison{localCount === 1 ? '' : 's'} saved in this browser
+              {' '}before shared storage was enabled. Import to make {localCount === 1 ? 'it' : 'them'} visible to everyone.
+            </p>
+            <button
+              onClick={importLocalHistory}
+              disabled={importing}
+              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition disabled:opacity-50 whitespace-nowrap"
+            >
+              {importing ? '⏳ Importing...' : '⬆️ Import'}
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center text-gray-400 italic py-20">
             <div className="animate-spin text-4xl mb-4">⏳</div>
-            Loading your saved comparisons...
+            Loading saved comparisons...
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4">⚠️</div>
+            <p className="text-red-700 font-semibold">{loadError}</p>
           </div>
         ) : history.length === 0 ? (
           <div className="text-center text-gray-400 italic py-20">
