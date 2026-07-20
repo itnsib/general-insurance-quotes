@@ -310,14 +310,27 @@ const getTravelBenefits = (company: string) => {
 // and numbered afterwards, so inserting the travel benefits (or skipping the VAT
 // row for GLPA) can never desync the S.No column.
 const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTravel: boolean) => {
-  const cell = (value: any) => `<td>${value ?? ''}</td>`;
+  const columnCount = comparison.quotes.length;
 
-  const rows: { label: string; cells: string[]; isHeader?: boolean; isTotal?: boolean }[] = [
-    { label: 'Scope of Cover', cells: comparison.quotes.map(q => cell(q.scopeOfCover)) },
-    { label: 'Geographical Limits', cells: comparison.quotes.map(q => cell(q.geographicalLimits)) },
-    { label: 'Conditions/Extensions', cells: comparison.quotes.map(q => cell(q.conditions.filter(c => c.trim().length > 0).map(c => `• ${c}`).join('<br>'))) },
-    { label: 'Main Exclusions', cells: comparison.quotes.map(q => cell(q.exclusions.filter(e => e.trim().length > 0).map(e => `• ${e}`).join('<br>'))) },
-    { label: 'Deductible', cells: comparison.quotes.map(q => cell(q.deductible)) }
+  type Row = {
+    label: string;
+    values: string[];
+    isHeader?: boolean;
+    isTotal?: boolean;
+    // Travel repeats the same wording in every column for these rows, which in a
+    // narrow column wraps to ~19 lines and pushes the table onto a third page.
+    // Where all columns agree, print the text once across the full width.
+    collapsible?: boolean;
+  };
+
+  const text = (value: any) => String(value ?? '');
+
+  const rows: Row[] = [
+    { label: 'Scope of Cover', values: comparison.quotes.map(q => text(q.scopeOfCover)), collapsible: true },
+    { label: 'Geographical Limits', values: comparison.quotes.map(q => text(q.geographicalLimits)), collapsible: true },
+    { label: 'Conditions/Extensions', values: comparison.quotes.map(q => q.conditions.filter(c => c.trim().length > 0).map(c => `• ${c}`).join('<br>')), collapsible: true },
+    { label: 'Main Exclusions', values: comparison.quotes.map(q => q.exclusions.filter(e => e.trim().length > 0).map(e => `• ${e}`).join('<br>')), collapsible: true },
+    { label: 'Deductible', values: comparison.quotes.map(q => text(q.deductible)), collapsible: true }
   ];
 
   if (isTravel) {
@@ -328,25 +341,27 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
       rows.push({
         label,
         isHeader: TRAVEL_BENEFITS.find(t => t.label === label)?.isHeader,
-        cells: comparison.quotes.map(q => cell(q.benefits?.find(b => b.label === label)?.value))
+        // Benefit figures are the whole point of the comparison — never collapsed,
+        // so each plan's column stays readable even when two plans happen to match.
+        values: comparison.quotes.map(q => text(q.benefits?.find(b => b.label === label)?.value))
       });
     });
   }
 
   rows.push(
-    { label: 'Premium Rate', cells: comparison.quotes.map(q => cell(q.premiumRate)) },
-    { label: 'Premium (AED)', cells: comparison.quotes.map(q => cell(q.premium)) },
-    { label: 'Policy Fee (AED)', cells: comparison.quotes.map(q => cell(q.policyFee)) }
+    { label: 'Premium Rate', values: comparison.quotes.map(q => text(q.premiumRate)) },
+    { label: 'Premium (AED)', values: comparison.quotes.map(q => text(q.premium)) },
+    { label: 'Policy Fee (AED)', values: comparison.quotes.map(q => text(q.policyFee)) }
   );
 
   if (!isGLPA) {
-    rows.push({ label: 'VAT (5%)', cells: comparison.quotes.map(q => cell(`AED ${q.vat}`)) });
+    rows.push({ label: 'VAT (5%)', values: comparison.quotes.map(q => `AED ${q.vat}`) });
   }
 
   rows.push({
     label: 'Total (AED)',
     isTotal: true,
-    cells: comparison.quotes.map(q => `<td${q.isRecommended ? ' class="recommended"' : ''}>AED ${q.total}</td>`)
+    values: comparison.quotes.map(q => `AED ${q.total}`)
   });
 
   let sno = 0;
@@ -354,12 +369,64 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
     // Section bands (e.g. "C. Personal Accident") span the full width and
     // don't consume an S.No.
     if (row.isHeader) {
-      return `<tr><td class="sno"></td><td class="particulars" colspan="${comparison.quotes.length + 1}" style="background:#D9E1F2;">${row.label}</td></tr>`;
+      return `<tr><td class="sno"></td><td class="particulars" colspan="${columnCount + 1}" style="background:#D9E1F2;">${row.label}</td></tr>`;
     }
+
     sno += 1;
-    return `<tr${row.isTotal ? ' style="background: #f0f8ff; font-weight: bold;"' : ''}><td class="sno">${sno}</td><td class="particulars">${row.label}</td>${row.cells.join('')}</tr>`;
+    const rowStyle = row.isTotal ? ' style="background: #f0f8ff; font-weight: bold;"' : '';
+    const lead = `<td class="sno">${sno}</td><td class="particulars">${row.label}</td>`;
+
+    // Only merge when the collapse is lossless: every column carries identical text.
+    const allMatch = columnCount > 1 && row.values.every(v => v === row.values[0]);
+    if (isTravel && row.collapsible && allMatch) {
+      return `<tr${rowStyle}>${lead}<td colspan="${columnCount}">${row.values[0]}</td></tr>`;
+    }
+
+    const cells = row.values.map((value, i) => {
+      const cls = row.isTotal && comparison.quotes[i]?.isRecommended ? ' class="recommended"' : '';
+      return `<td${cls}>${value}</td>`;
+    }).join('');
+
+    return `<tr${rowStyle}>${lead}${cells}</tr>`;
   }).join('');
 };
+
+// Travel prints ~36 rows. These overrides shrink the type and padding so the
+// comparison still lands on a single page after the cover image.
+const TRAVEL_COMPACT_CSS = `
+        .container { padding: 8px; }
+        .header { padding: 8px; margin-bottom: 8px; }
+        .title { font-size: 16px; margin-bottom: 0; }
+        .ref-date { font-size: 9px; margin-bottom: 6px; }
+        .customer-details { padding: 8px; margin-bottom: 8px; }
+        .customer-details h3 { font-size: 11px; padding-bottom: 3px; }
+        .details-grid { font-size: 8px; gap: 4px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+        table { font-size: 8px; margin-bottom: 8px; }
+        th { padding: 3px 2px; font-size: 8px; }
+        td { padding: 2px 3px; font-size: 8px; line-height: 1.2; }
+        .sno { width: 18px; }
+        /* Benefit values are short (amounts, "Not Covered"), so give the label
+           column enough width to stay on one line — a wrapped label doubles the
+           height of every one of the ~36 rows. */
+        .particulars { width: 200px; font-weight: bold; }
+        .advisor-comment { padding: 6px; margin-top: 8px; font-size: 9px; }
+        .advisor-comment h4 { font-size: 10px; margin-bottom: 2px; }
+        .advisor-comment p { margin: 2px 0; }
+        .summary { padding: 8px; margin-top: 8px; font-size: 8px; }
+        .summary h3 { font-size: 10px; margin: 0 0 3px 0; }
+        .summary p { margin: 2px 0; }
+        @media print {
+            body { font-size: 8px; }
+            .container { padding: 6px; }
+            table { font-size: 7.5px; }
+            td { padding: 2px 3px; font-size: 7.5px; }
+            th { padding: 3px 2px; font-size: 7.5px; }
+            /* Let the cover image size to its content so it can't spill a blank page. */
+            .page { min-height: auto; }
+            .image-page { min-height: auto; padding: 10px; }
+            .nsib-image { max-height: 60vh; }
+        }
+`;
 
 // ============ QUOTE GENERATOR PAGE ============
 function QuoteGeneratorPage({ 
@@ -798,13 +865,14 @@ function QuoteGeneratorPage({
         .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
         
-        @media print { 
-            body { margin: 0; font-size: 10px; } 
+        @media print {
+            body { margin: 0; font-size: 10px; }
             .container { padding: 10px; }
             table { font-size: 9px; }
             td { padding: 4px 2px; }
             th { padding: 6px 2px; }
         }
+${isTravel ? TRAVEL_COMPACT_CSS : ''}
     </style>
 </head>
 <body>
@@ -1483,6 +1551,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
+${isTravel ? TRAVEL_COMPACT_CSS : ''}
     </style>
 </head>
 <body>
