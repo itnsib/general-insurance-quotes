@@ -403,7 +403,10 @@ const TRAVEL_COMPACT_CSS = `
         .details-grid { font-size: 8px; gap: 4px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
         table { font-size: 8px; margin-bottom: 8px; }
         th { padding: 3px 2px; font-size: 8px; }
-        td { padding: 2px 3px; font-size: 8px; line-height: 1.2; }
+        /* Company names are the key column labels — keep them a step larger than
+           the body text even in the compact layout. Costs one row's height. */
+        .company-header { font-size: 9.5px; padding: 5px 3px; line-height: 1.25; }
+        td { padding: 1px 3px; font-size: 8px; line-height: 1.15; }
         .sno { width: 18px; }
         /* Benefit values are short (amounts, "Not Covered"), so give the label
            column enough width to stay on one line — a wrapped label doubles the
@@ -412,14 +415,14 @@ const TRAVEL_COMPACT_CSS = `
         .advisor-comment { padding: 6px; margin-top: 8px; font-size: 9px; }
         .advisor-comment h4 { font-size: 10px; margin-bottom: 2px; }
         .advisor-comment p { margin: 2px 0; }
-        .summary { padding: 8px; margin-top: 8px; font-size: 8px; }
-        .summary h3 { font-size: 10px; margin: 0 0 3px 0; }
-        .summary p { margin: 2px 0; }
+        .summary { padding: 6px; margin-top: 6px; font-size: 8px; }
+        .summary h3 { font-size: 10px; margin: 0 0 2px 0; padding-bottom: 2px; }
+        .summary p { margin: 1px 0; }
         @media print {
             body { font-size: 8px; }
             .container { padding: 6px; }
             table { font-size: 7.5px; }
-            td { padding: 2px 3px; font-size: 7.5px; }
+            td { padding: 1px 3px; font-size: 7.5px; line-height: 1.15; }
             th { padding: 3px 2px; font-size: 7.5px; }
             /* Let the cover image size to its content so it can't spill a blank page. */
             .page { min-height: auto; }
@@ -860,6 +863,14 @@ function QuoteGeneratorPage({
         .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
         .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
+        /* th sets color:white, but .sno/.particulars/.company-header each override
+           the background to a light colour without resetting the text colour, which
+           left every header cell white-on-near-white. Restore the solid blue band
+           the th rule already intended, so company names read clearly. */
+        thead th,
+        thead th.sno,
+        thead th.particulars,
+        thead th.company-header { background: #4472C4; color: #ffffff; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
         .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
         .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
@@ -1549,6 +1560,14 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
         .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
         .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
+        /* th sets color:white, but .sno/.particulars/.company-header each override
+           the background to a light colour without resetting the text colour, which
+           left every header cell white-on-near-white. Restore the solid blue band
+           the th rule already intended, so company names read clearly. */
+        thead th,
+        thead th.sno,
+        thead th.particulars,
+        thead th.company-header { background: #4472C4; color: #ffffff; }
         .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
         .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
 ${isTravel ? TRAVEL_COMPACT_CSS : ''}
