@@ -12,6 +12,9 @@ export interface Quote {
   vat: number;
   total: number;
   isRecommended: boolean;
+  // Travel line only — the Schedule of Benefits column for this insurer.
+  // Optional so every previously saved quote (which has no benefits) still loads.
+  benefits?: { label: string; value: string }[];
 }
 
 export interface SavedComparison {

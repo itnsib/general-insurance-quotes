@@ -12,8 +12,54 @@ const INSURANCE_LINES = [
   { value: 'wcel', label: 'WC EL - Workmen\'s Compensation and Employer\'s Liability' },
   { value: 'car', label: 'CAR - Contractor\'s All Risk' },
   { value: 'cpm', label: 'CPM - Contractor\'s Plant and Machinery Insurance' },
-  { value: 'glpa', label: 'GLPA - Group Life and Personal Accident Insurance' }
+  { value: 'glpa', label: 'GLPA - Group Life and Personal Accident Insurance' },
+  { value: 'travel', label: 'TRAVEL - Travel Insurance' }
 ];
+
+// Travel is quoted as four separate columns: three Qatar plans plus Orient.
+// The order here is binding — it maps positionally onto TRAVEL_BENEFITS.values.
+const TRAVEL_COMPANIES = [
+  'Qatar Ins. Co. - Elite',
+  'Qatar Ins. Co. - Premier',
+  'Qatar Ins. Co. - Standard',
+  'Orient Ins. Co.'
+];
+
+// Schedule of Benefits, transcribed verbatim from the travel comparison sheet.
+// values[] is ordered [Elite, Premier, Standard, Orient] to match TRAVEL_COMPANIES.
+// Values are strings because a single column mixes amounts, "Not Covered",
+// "Included" and per-day/per-tooth wordings. Empty string = blank in the sheet,
+// which is deliberately not the same as an explicit "Not Covered".
+const TRAVEL_BENEFITS: { label: string; values: string[]; isHeader?: boolean }[] = [
+  { label: 'A. Trip Cancellation / Curtailment', values: ['7500', '5000', 'Not Covered', '1000'] },
+  { label: 'B. Emergency Medical and Other Expenses', values: ['1000000', '500000', '100000', '100000'] },
+  { label: 'Transportation & Accommodation Expenses', values: ['$100 per day (Max $2,500)', '$50 per day (Max $1,500)', 'Not Covered', ''] },
+  { label: 'Emergency Family Travel', values: ['1x Economy Ticket', '1x Economy Ticket', 'Not Covered', '1 x Economy Return Ticket'] },
+  { label: 'Repatriation of the Deceased', values: ['15000', '10000', '7000', '7000'] },
+  { label: 'Funeral Expenses', values: ['2000', '1000', '500', '750'] },
+  { label: 'Dental Expenses', values: ['$200 per tooth (Max $1,500)', '$200 per tooth (Max $1,000)', '$200 per tooth (Max $500)', '$100 per tooth (Max $500)'] },
+  { label: 'C. Personal Accident', values: ['', '', '', ''], isHeader: true },
+  { label: 'Accidental Death or Dismemberment', values: ['150000', '100000', 'Not Covered', '25000'] },
+  { label: 'Accidental Death (Common Carrier)', values: ['Included', 'Included', '50000', '25000'] },
+  { label: 'Permanent Total Disablement', values: ['150000', '100000', 'Not Covered', '25000'] },
+  { label: 'D. Missed Departure', values: ['1500', '1000', 'Not Covered', '250'] },
+  { label: 'E. Travel Delay', values: ['$50 per hour up to $1,000', '$50 per hour up to $1,000', 'Not Covered', '$50 per 3 hour up to $500'] },
+  { label: 'F. Personal Possessions', values: ['7000 (Max $1,250 per bag)', '5000 (Max $750 per bag)', 'Not Covered', ''] },
+  { label: 'Valuables in total (See valuables definition) Single item limits apply.', values: ['500', '350', 'Not Covered', '$500 Per Item'] },
+  { label: 'Single Item, Pair or Set', values: ['125', '75', 'Not Covered', '$100 Per Item'] },
+  { label: 'Baggage Delay', values: ['$50 per hour up to $1,000', '$50 per hour up to $1,000', 'Not Covered', '$50 per 3 hours up to $500'] },
+  { label: 'F.2 Personal Money & Documents', values: ['1000', '1000', '1000', '200'] },
+  { label: 'Cash limit', values: ['500', '300', '200', '250'] },
+  { label: 'Beach & Pool Cash limit', values: ['100', '100', '100', ''] },
+  { label: 'F.3 Loss of Passport / Travel Documents', values: ['750', '500', 'Not Covered', ''] },
+  { label: 'G. Travel Visa Rejection', values: ['100', '100', 'Not Covered', '100'] },
+  { label: 'H. Personal Liability', values: ['1000000', '500000', 'Not Covered', '100000'] },
+  { label: 'I. Legal Expenses', values: ['25000', '10000', 'Not Covered', '1000'] },
+  { label: 'J. Bail Bond', values: ['10000', '5000', 'Not Covered', '1000'] },
+  { label: 'K. Credit Card Fraud', values: ['1000', '500', 'Not Covered', '200'] },
+  { label: 'L. Mugging', values: ['500', '500', 'Not Covered', '100'] }
+];
+
 
 // Insurance data extracted from Excel file
 const INSURANCE_DEFAULTS: Record<string, any> = {
@@ -166,6 +212,30 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
       "Offshore Risk"
     ],
     "deductible": "NIL"
+  },
+  "travel": {
+    // Reuses TRAVEL_COMPANIES so the checkbox list, the default/custom split in
+    // loadComparisonForEdit and the benefits columns can never disagree.
+    "companies": TRAVEL_COMPANIES,
+    "scopeOfCover": "To indemnify the Insured in respect of travel related losses including emergency medical expenses, trip cancellation or curtailment, personal accident, baggage and personal possessions, travel delay and personal liability arising during the insured journey, in accordance with the Schedule of Benefits attaching hereto.",
+    "geographicalLimits": "Worldwide excluding country of residence (as per selected plan area)",
+    "conditions": [
+      "Cover operative from commencement of the insured journey until return to country of residence",
+      "Benefits payable as per the Schedule of Benefits attaching to the policy",
+      "24/7 emergency assistance helpline",
+      "Emergency medical evacuation and repatriation included",
+      "Maximum trip duration as per policy schedule"
+    ],
+    "exclusions": [
+      "Pre-existing medical conditions",
+      "War Risks, Nuclear Risk, Terrorism",
+      "Self-inflicted injuries, suicide, alcohol or drug related claims",
+      "Travel undertaken against medical advice",
+      "Professional or hazardous sports and activities",
+      "Travel to countries subject to sanctions or government travel bans",
+      "Losses not reported to local authorities within 24 hours (baggage and money claims)"
+    ],
+    "deductible": "As per policy schedule"
   }
 };
 
@@ -221,6 +291,74 @@ const getLineDefaults = (lineValue: string) => {
     exclusions: [],
     deductible: ''
   };
+};
+
+const isTravelLine = (lineValue: string) => lineValue === 'travel';
+
+// Turn a company name into its column in the benefits sheet. A company added via
+// "+ Add Company" isn't in TRAVEL_COMPANIES, so it gets the full set of benefit
+// labels with blank values — it still lines up row-for-row in the printed table.
+const getTravelBenefits = (company: string) => {
+  const columnIndex = TRAVEL_COMPANIES.indexOf(company);
+  if (columnIndex === -1) {
+    return TRAVEL_BENEFITS.map(row => ({ label: row.label, value: '' }));
+  }
+  return TRAVEL_BENEFITS.map(row => ({ label: row.label, value: row.values[columnIndex] ?? '' }));
+};
+
+// Builds the <tbody> of the printed comparison table. Rows are assembled first
+// and numbered afterwards, so inserting the travel benefits (or skipping the VAT
+// row for GLPA) can never desync the S.No column.
+const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTravel: boolean) => {
+  const cell = (value: any) => `<td>${value ?? ''}</td>`;
+
+  const rows: { label: string; cells: string[]; isHeader?: boolean; isTotal?: boolean }[] = [
+    { label: 'Scope of Cover', cells: comparison.quotes.map(q => cell(q.scopeOfCover)) },
+    { label: 'Geographical Limits', cells: comparison.quotes.map(q => cell(q.geographicalLimits)) },
+    { label: 'Conditions/Extensions', cells: comparison.quotes.map(q => cell(q.conditions.filter(c => c.trim().length > 0).map(c => `• ${c}`).join('<br>'))) },
+    { label: 'Main Exclusions', cells: comparison.quotes.map(q => cell(q.exclusions.filter(e => e.trim().length > 0).map(e => `• ${e}`).join('<br>'))) },
+    { label: 'Deductible', cells: comparison.quotes.map(q => cell(q.deductible)) }
+  ];
+
+  if (isTravel) {
+    // Use the first quote as the spine for row order, then match every other
+    // column by label — so a company added via "+ Add Company" still lines up.
+    const benefitLabels = comparison.quotes[0]?.benefits?.map(b => b.label) || [];
+    benefitLabels.forEach(label => {
+      rows.push({
+        label,
+        isHeader: TRAVEL_BENEFITS.find(t => t.label === label)?.isHeader,
+        cells: comparison.quotes.map(q => cell(q.benefits?.find(b => b.label === label)?.value))
+      });
+    });
+  }
+
+  rows.push(
+    { label: 'Premium Rate', cells: comparison.quotes.map(q => cell(q.premiumRate)) },
+    { label: 'Premium (AED)', cells: comparison.quotes.map(q => cell(q.premium)) },
+    { label: 'Policy Fee (AED)', cells: comparison.quotes.map(q => cell(q.policyFee)) }
+  );
+
+  if (!isGLPA) {
+    rows.push({ label: 'VAT (5%)', cells: comparison.quotes.map(q => cell(`AED ${q.vat}`)) });
+  }
+
+  rows.push({
+    label: 'Total (AED)',
+    isTotal: true,
+    cells: comparison.quotes.map(q => `<td${q.isRecommended ? ' class="recommended"' : ''}>AED ${q.total}</td>`)
+  });
+
+  let sno = 0;
+  return rows.map(row => {
+    // Section bands (e.g. "C. Personal Accident") span the full width and
+    // don't consume an S.No.
+    if (row.isHeader) {
+      return `<tr><td class="sno"></td><td class="particulars" colspan="${comparison.quotes.length + 1}" style="background:#D9E1F2;">${row.label}</td></tr>`;
+    }
+    sno += 1;
+    return `<tr${row.isTotal ? ' style="background: #f0f8ff; font-weight: bold;"' : ''}><td class="sno">${sno}</td><td class="particulars">${row.label}</td>${row.cells.join('')}</tr>`;
+  }).join('');
 };
 
 // ============ QUOTE GENERATOR PAGE ============
@@ -333,7 +471,12 @@ function QuoteGeneratorPage({
         total: total,
         // Preserve arrays properly
         conditions: Array.isArray(quote.conditions) ? [...quote.conditions] : [],
-        exclusions: Array.isArray(quote.exclusions) ? [...quote.exclusions] : []
+        exclusions: Array.isArray(quote.exclusions) ? [...quote.exclusions] : [],
+        // Rebuild the inner objects rather than shallow-copying the array, so
+        // editing a benefit can't mutate the saved history record in place.
+        benefits: Array.isArray(quote.benefits)
+          ? quote.benefits.map(b => ({ label: b.label, value: b.value }))
+          : undefined
       };
     });
     
@@ -383,7 +526,10 @@ function QuoteGeneratorPage({
       policyFee: 0,
       vat: vat,
       total: total,
-      isRecommended: false
+      isRecommended: false,
+      // Each company gets its own column's figures, so Elite/Premier/Standard
+      // open pre-filled with different values. Undefined for every other line.
+      benefits: isTravelLine(insuranceLine) ? getTravelBenefits(company) : undefined
     };
   };
 
@@ -510,7 +656,9 @@ function QuoteGeneratorPage({
   const downloadComparison = (comparison: SavedComparison) => {
     // Check if GLPA insurance for VAT handling
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
-    
+    const isTravel = comparison.insuranceLine.includes('TRAVEL');
+    const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
+
     // Create HTML content with NSIB image as first page
     const htmlContent = `
 <!DOCTYPE html>
@@ -621,9 +769,10 @@ function QuoteGeneratorPage({
         table { 
             width: 100%; 
             border-collapse: collapse; 
-            margin-bottom: 20px; 
+            margin-bottom: 20px;
             font-size: 11px;
-            page-break-inside: avoid;
+            /* Travel adds ~27 benefit rows, which cannot fit on one page. */
+            page-break-inside: ${isTravel ? 'auto' : 'avoid'};
         }
         th { 
             background: #4472C4; 
@@ -721,66 +870,7 @@ function QuoteGeneratorPage({
                         ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
                     </tr>
                 </thead>
-                <tbody>
-                    <tr>
-                        <td class="sno">1</td>
-                        <td class="particulars">Scope of Cover</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">2</td>
-                        <td class="particulars">Geographical Limits</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">3</td>
-                        <td class="particulars">Conditions/Extensions</td>
-                        ${comparison.quotes.map(quote => `
-                            <td>
-                                ${quote.conditions.filter(condition => condition.trim().length > 0).map(condition => `• ${condition}`).join('<br>')}
-                            </td>
-                        `).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">4</td>
-                        <td class="particulars">Main Exclusions</td>
-                        ${comparison.quotes.map(quote => `
-                            <td>
-                                ${quote.exclusions.filter(exclusion => exclusion.trim().length > 0).map(exclusion => `• ${exclusion}`).join('<br>')}
-                            </td>
-                        `).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">5</td>
-                        <td class="particulars">Deductible</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">6</td>
-                        <td class="particulars">Premium Rate</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">7</td>
-                        <td class="particulars">Premium (AED)</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}
-                    </tr>
-                    <tr>
-                        <td class="sno">8</td>
-                        <td class="particulars">Policy Fee (AED)</td>
-                        ${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}
-                    </tr>
-                    ${!isGLPA ? `<tr>
-                        <td class="sno">9</td>
-                        <td class="particulars">VAT (5%)</td>
-                        ${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}
-                    </tr>` : ''}
-                    <tr style="background: #f0f8ff; font-weight: bold;">
-                        <td class="sno">${!isGLPA ? '10' : '9'}</td>
-                        <td class="particulars">Total (AED)</td>
-                        ${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}
-                    </tr>
-                </tbody>
+                <tbody>${tableBody}</tbody>
             </table>
 
             ${comparison.advisorComment ? `
@@ -1103,6 +1193,48 @@ Press Enter for new line"
                           />
                         </div>
 
+                        {isTravelLine(insuranceLine) && quote.benefits && (
+                          <div>
+                            <label className="block text-xs font-bold mb-1 text-gray-800">Schedule of Benefits (USD)</label>
+                            <div className="bg-white p-2 rounded border max-h-[400px] overflow-y-auto">
+                              {quote.benefits.map((benefit, bIdx) => {
+                                const isHeader = TRAVEL_BENEFITS[bIdx]?.isHeader;
+
+                                if (isHeader) {
+                                  return (
+                                    <div key={benefit.label} className="bg-gray-200 text-gray-800 text-xs font-bold px-2 py-1 rounded mt-2 mb-1">
+                                      {benefit.label}
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div key={benefit.label} className="mb-1">
+                                    <label className="block text-[10px] text-gray-600 leading-tight">{benefit.label}</label>
+                                    <input
+                                      type="text"
+                                      className="w-full p-1 border border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                                      value={benefit.value}
+                                      onChange={(e) => {
+                                        // Replace one entry immutably; routing through updateQuote
+                                        // means the premium/VAT maths is never touched.
+                                        const updated = quote.benefits!.map((b, i) =>
+                                          i === bIdx ? { ...b, value: e.target.value } : b
+                                        );
+                                        updateQuote(idx, 'benefits', updated);
+                                      }}
+                                      placeholder="e.g., 7500 or Not Covered"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              ✓ {quote.benefits.filter((_, i) => !TRAVEL_BENEFITS[i]?.isHeader).length} benefits
+                            </p>
+                          </div>
+                        )}
+
                         <div>
                           <label className="block text-xs font-bold mb-1 text-gray-800">Premium Rate</label>
                           <input
@@ -1306,7 +1438,9 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   const downloadComparison = (comparison: SavedComparison) => {
     // Same download function as main generator with NSIB image first
     const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
-    
+    const isTravel = comparison.insuranceLine.includes('TRAVEL');
+    const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
+
     const htmlContent = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1341,7 +1475,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
         .container { max-width: 100%; margin: 0; padding: 15px; }
         .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
         .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; page-break-inside: avoid; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; page-break-inside: ${isTravel ? 'auto' : 'avoid'}; }
         th { background: #4472C4; color: white; padding: 8px 4px; text-align: center; border: 1px solid #ddd; font-weight: bold; font-size: 11px; }
         td { padding: 6px 4px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; line-height: 1.3; }
         .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
@@ -1365,18 +1499,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
             <div class="header"><div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div></div>
             <table>
                 <thead><tr><th class="sno">S.No.</th><th class="particulars">Particulars</th>${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}</tr></thead>
-                <tbody>
-                    <tr><td class="sno">1</td><td class="particulars">Scope of Cover</td>${comparison.quotes.map(quote => `<td>${quote.scopeOfCover}</td>`).join('')}</tr>
-                    <tr><td class="sno">2</td><td class="particulars">Geographical Limits</td>${comparison.quotes.map(quote => `<td>${quote.geographicalLimits}</td>`).join('')}</tr>
-                    <tr><td class="sno">3</td><td class="particulars">Conditions/Extensions</td>${comparison.quotes.map(quote => `<td>${quote.conditions.filter(condition => condition.trim().length > 0).map(condition => `• ${condition}`).join('<br>')}</td>`).join('')}</tr>
-                    <tr><td class="sno">4</td><td class="particulars">Main Exclusions</td>${comparison.quotes.map(quote => `<td>${quote.exclusions.filter(exclusion => exclusion.trim().length > 0).map(exclusion => `• ${exclusion}`).join('<br>')}</td>`).join('')}</tr>
-                    <tr><td class="sno">5</td><td class="particulars">Deductible</td>${comparison.quotes.map(quote => `<td>${quote.deductible}</td>`).join('')}</tr>
-                    <tr><td class="sno">6</td><td class="particulars">Premium Rate</td>${comparison.quotes.map(quote => `<td>${quote.premiumRate}</td>`).join('')}</tr>
-                    <tr><td class="sno">7</td><td class="particulars">Premium (AED)</td>${comparison.quotes.map(quote => `<td>${quote.premium}</td>`).join('')}</tr>
-                    <tr><td class="sno">8</td><td class="particulars">Policy Fee (AED)</td>${comparison.quotes.map(quote => `<td>${quote.policyFee}</td>`).join('')}</tr>
-                    ${!isGLPA ? `<tr><td class="sno">9</td><td class="particulars">VAT (5%)</td>${comparison.quotes.map(quote => `<td>AED ${quote.vat}</td>`).join('')}</tr>` : ''}
-                    <tr style="background: #f0f8ff; font-weight: bold;"><td class="sno">${!isGLPA ? '10' : '9'}</td><td class="particulars">Total (AED)</td>${comparison.quotes.map(quote => `<td${quote.isRecommended ? ' class="recommended"' : ''}>AED ${quote.total}</td>`).join('')}</tr>
-                </tbody>
+                <tbody>${tableBody}</tbody>
             </table>
             <div class="summary"><h3>Summary</h3><p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p></div>
         </div>
