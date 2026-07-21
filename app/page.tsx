@@ -1,7 +1,7 @@
 // app/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Quote, SavedComparison } from './lib/types';
 
 // ============ CONSTANTS ============
@@ -1427,6 +1427,10 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   const [loadError, setLoadError] = useState<string | null>(null);
   const [localCount, setLocalCount] = useState(0);
   const [importing, setImporting] = useState(false);
+  const [dateFilter, setDateFilter] = useState<'all' | 'thisMonth' | 'lastMonth' | 'custom'>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [lineFilter, setLineFilter] = useState('all');
 
   useEffect(() => {
     loadHistory();
@@ -1604,6 +1608,55 @@ ${isTravel ? TRAVEL_COMPACT_CSS : ''}
     window.URL.revokeObjectURL(url);
   };
 
+  // Month boundaries for the "this month" / "last month" counters.
+  const now = new Date();
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const counts = useMemo(() => {
+    let thisMonth = 0;
+    let lastMonth = 0;
+    for (const c of history) {
+      const d = new Date(c.date);
+      if (isNaN(d.getTime())) continue;
+      if (d >= thisMonthStart && d < nextMonthStart) thisMonth++;
+      else if (d >= lastMonthStart && d < thisMonthStart) lastMonth++;
+    }
+    return { total: history.length, thisMonth, lastMonth };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
+
+  const insuranceLines = useMemo(
+    () => Array.from(new Set(history.map(c => c.insuranceLine))).sort(),
+    [history]
+  );
+
+  const filteredHistory = useMemo(() => {
+    return history.filter(c => {
+      if (lineFilter !== 'all' && c.insuranceLine !== lineFilter) return false;
+
+      const d = new Date(c.date);
+      if (isNaN(d.getTime())) return dateFilter === 'all';
+
+      if (dateFilter === 'thisMonth') return d >= thisMonthStart && d < nextMonthStart;
+      if (dateFilter === 'lastMonth') return d >= lastMonthStart && d < thisMonthStart;
+      if (dateFilter === 'custom') {
+        // Dates are inclusive on both ends; an empty box means "unbounded".
+        if (customFrom && d < new Date(`${customFrom}T00:00:00`)) return false;
+        if (customTo && d > new Date(`${customTo}T23:59:59.999`)) return false;
+      }
+      return true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, dateFilter, customFrom, customTo, lineFilter]);
+
+  const filterLabel =
+    dateFilter === 'thisMonth' ? 'this month'
+    : dateFilter === 'lastMonth' ? 'last month'
+    : dateFilter === 'custom' ? 'in the selected range'
+    : 'in total';
+
   return (
     <div className="grid grid-cols-1 gap-5">
       <div className="bg-white rounded-xl p-5 shadow-2xl">
@@ -1621,6 +1674,96 @@ ${isTravel ? TRAVEL_COMPACT_CSS : ''}
           </button>
         </div>
         
+        {!loading && !loadError && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-indigo-700 uppercase">Total saved</div>
+                <div className="text-2xl font-bold text-indigo-900">{counts.total}</div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-green-700 uppercase">This month</div>
+                <div className="text-2xl font-bold text-green-900">{counts.thisMonth}</div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-amber-700 uppercase">Last month</div>
+                <div className="text-2xl font-bold text-amber-900">{counts.lastMonth}</div>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-gray-600 uppercase">Showing</div>
+                <div className="text-2xl font-bold text-gray-900">{filteredHistory.length}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
+                <select
+                  value={dateFilter}
+                  onChange={e => setDateFilter(e.target.value as typeof dateFilter)}
+                  className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                >
+                  <option value="all">All time</option>
+                  <option value="thisMonth">This month</option>
+                  <option value="lastMonth">Last month</option>
+                  <option value="custom">Custom range</option>
+                </select>
+              </div>
+
+              {dateFilter === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">From</label>
+                    <input
+                      type="date"
+                      value={customFrom}
+                      onChange={e => setCustomFrom(e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">To</label>
+                    <input
+                      type="date"
+                      value={customTo}
+                      onChange={e => setCustomTo(e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Insurance line</label>
+                <select
+                  value={lineFilter}
+                  onChange={e => setLineFilter(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+                >
+                  <option value="all">All lines</option>
+                  {insuranceLines.map(line => (
+                    <option key={line} value={line}>{line}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(dateFilter !== 'all' || lineFilter !== 'all') && (
+                <button
+                  onClick={() => { setDateFilter('all'); setLineFilter('all'); setCustomFrom(''); setCustomTo(''); }}
+                  className="px-3 py-2 rounded text-sm font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 transition"
+                >
+                  ✖ Clear
+                </button>
+              )}
+
+              <p className="text-sm text-gray-700 ml-auto">
+                <strong>{filteredHistory.length}</strong> comparison{filteredHistory.length === 1 ? '' : 's'} {filterLabel}
+                {lineFilter !== 'all' && ` for ${lineFilter}`}
+              </p>
+            </div>
+          </>
+        )}
+
         {localCount > 0 && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex justify-between items-center gap-4">
             <p className="text-sm text-blue-900">
@@ -1651,9 +1794,13 @@ ${isTravel ? TRAVEL_COMPACT_CSS : ''}
           <div className="text-center text-gray-400 italic py-20">
             No saved comparisons yet. Create a comparison and save it to see it here.
           </div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="text-center text-gray-400 italic py-20">
+            No comparisons match this filter. Try a different period or line.
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {history.map(comparison => (
+            {filteredHistory.map(comparison => (
               <div key={comparison.id} className="bg-gradient-to-br from-gray-50 to-gray-100 p-5 rounded-lg border-2 border-gray-200 hover:border-indigo-400 transition shadow-sm hover:shadow-md">
                 <div className="mb-3">
                   <div className="font-bold text-lg text-indigo-700">{comparison.insuranceLine}</div>
