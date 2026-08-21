@@ -1,7 +1,7 @@
 // app/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Quote, SavedComparison } from './lib/types';
 
 // ============ CONSTANTS ============
@@ -288,12 +288,177 @@ const getLineDefaults = (lineValue: string) => {
     scopeOfCover: '',
     geographicalLimits: '',
     conditions: [],
+
+
+    
     exclusions: [],
     deductible: ''
   };
 };
 
 const isTravelLine = (lineValue: string) => lineValue === 'travel';
+
+// The comparison is downloaded as a standalone .html file and opened from disk,
+// so the cover page cannot reference /nsib-cover.png — from a file:// document
+// that path resolves against the filesystem root, not the app. Inlining the
+// image as a data URI keeps the download self-contained, so it still renders
+// after it has been emailed on to a customer.
+// The cover artwork with its six cards left empty. The copy is laid over it as
+// live text rather than baked in, so it can be reflowed to fit the page exactly
+// and edited without going back to the design file.
+const COVER_IMAGE_PATH = '/nsib-cover-template.png';
+
+// Positions are percentages of the cover sheet, so they hold at any page size.
+// Each card has a gold divider near its foot in the artwork; the copy is centred
+// in the space above it.
+const COVER_BLURBS: { x: number; y: number; w: number; h: number; html: string }[] = [
+  { x: 4.5, y: 20.5, w: 22.8, h: 20.1, html: 'With over 20 years of experience, New Shield Insurance Brokers delivers tailored protection that transforms risk into reassurance.' },
+  { x: 72.7, y: 20.5, w: 22.8, h: 20.1, html: 'A team of 40 dedicated professionals offers clients expert service and a wide range of insurer products.' },
+  { x: 4.5, y: 43.6, w: 22.8, h: 20.9, html: 'We compare multiple insurers to provide the best coverage at the right cost.' },
+  { x: 72.7, y: 43.6, w: 22.8, h: 20.9, html: 'We work with over 40 channel partners as an insurance broker.' },
+  { x: 4.5, y: 67.7, w: 22.8, h: 18.8, html: 'Proudly rated<br><span class="cover-rating"><span class="cover-stars">★★★★★</span> <strong>4.7</strong></span><br>on Google for service excellence.' },
+  { x: 72.7, y: 67.7, w: 22.8, h: 18.8, html: 'We guide you through claims, handling insurers and paperwork to secure a fair, timely settlement.' }
+];
+
+const buildCoverPage = (dataUri: string | null) =>
+  dataUri
+    ? `    <section class="sheet cover-sheet" style="background-image:url(${dataUri})">
+${COVER_BLURBS.map(b => `        <div class="cover-copy" style="left:${b.x}%;top:${b.y}%;width:${b.w}%;height:${b.h}%">${b.html}</div>`).join('\n')}
+    </section>`
+    : '';
+const LOGO_IMAGE_PATH = '/nsib-logo.png';
+const MASCOT_IMAGE_PATH = '/nsib-mascot.png';
+
+// null is cached too: a brand asset that isn't in /public won't be re-requested
+// on every download.
+const imageCache = new Map<string, string | null>();
+
+const loadImageAsDataUri = async (path: string): Promise<string | null> => {
+  const cached = imageCache.get(path);
+  if (cached !== undefined) return cached;
+
+  try {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(`Server responded ${response.status}`);
+
+    const blob = await response.blob();
+    const dataUri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    imageCache.set(path, dataUri);
+    return dataUri;
+  } catch (error) {
+    // Never block the download over artwork — losing a branded element is
+    // recoverable, losing a just-saved comparison is not. The element is
+    // omitted rather than left as a broken image.
+    console.error(`Failed to load ${path}, generating without it:`, error);
+    imageCache.set(path, null);
+    return null;
+  }
+};
+
+// Insurer logos for the comparison column headers. Served from public/ and
+// inlined at download time, rather than the external image hosts the IM and GMI
+// tools use — a rotted link or a blocked host would otherwise leave a broken
+// image in a document already sitting in a customer's inbox.
+const INSURER_LOGOS: Record<string, string> = {
+  // Short codes and trading names used by INSURANCE_DEFAULTS.
+  'AIG': '/insurers/aig.png',
+  'IH': '/insurers/insurance-house.jpg',
+  'INSURANCE HOUSE': '/insurers/insurance-house.jpg',
+  'DNIRC': '/insurers/dnirc.jpg',
+  'ABNIC': '/insurers/al-buhaira.jpg',
+  'AL BUHAIRA': '/insurers/al-buhaira.jpg',
+  'UNION': '/insurers/union.jpg',
+  'ALLIANCE': '/insurers/alliance.jpg',
+  'AWNIC': '/insurers/awnic.jpg',
+  'ARABIA': '/insurers/arabia.png',
+  'ARABIAN SCANDINAVIAN': '/insurers/arabia.png',
+  // "ORIENT UNB" and "Orient Ins. Co." both resolve here; the takaful arm is a
+  // separate, longer key so it is matched first.
+  'ORIENT TAKAFUL': '/insurers/orient-takaful.jpg',
+  'ORIENT': '/insurers/orient.png',
+  'QATAR GENERAL': '/insurers/qatar-general.jpg',
+  'QATAR': '/insurers/qatar-insurance.png',
+  'SUKOON TAKAFUL': '/insurers/sukoon-takaful.png',
+  'SUKOON': '/insurers/sukoon.jpg',
+  // Commonly added through "+ Add Company".
+  'ADAMJEE': '/insurers/adamjee.jpg',
+  'ADNIC': '/insurers/adnic.jpg',
+  'ADNTC': '/insurers/adntc.jpg',
+  'AFNIC': '/insurers/afnic.jpg',
+  'AL AIN': '/insurers/al-ain.png',
+  'AL ITTIHAD': '/insurers/al-ittihad.jpg',
+  'AL SAGR': '/insurers/al-sagr.jpg',
+  'AXA': '/insurers/axa.png',
+  'CIGNA': '/insurers/cigna.jpg',
+  'DAMAN': '/insurers/daman.png',
+  'DAMANA': '/insurers/damana.jpg',
+  'DIC': '/insurers/dic.jpg',
+  'DUBAI INSURANCE': '/insurers/dic.jpg',
+  'EMIRATES': '/insurers/emirates.jpg',
+  'FIDELITY': '/insurers/fidelity.jpg',
+  'GIG': '/insurers/gig.png',
+  'HANSEMERKUR': '/insurers/hansemerkur.jpg',
+  'LIVA': '/insurers/liva.jpg',
+  'MAXHEALTH': '/insurers/maxhealth.jpg',
+  'MEDGULF': '/insurers/medgulf.png',
+  'METHAQ': '/insurers/methaq.jpg',
+  'METLIFE': '/insurers/metlife.png',
+  'NEW INDIA': '/insurers/new-india.png',
+  'NGI': '/insurers/ngi.jpg',
+  'RAK': '/insurers/rak.png',
+  'SALAMA': '/insurers/salama.jpg',
+  'SHARJAH': '/insurers/sharjah.jpg',
+  'TAKAFUL EMARAT': '/insurers/takaful-emarat.png',
+  'TOKIO': '/insurers/tokio.jpg',
+  'WATANIA': '/insurers/watania.jpg'
+};
+
+// Exact match first, then longest-key-first substring matching, so a column
+// headed "Qatar Ins. Co. - Elite" or "Orient UNB" still finds its logo and
+// "SUKOON TAKAFUL" is never swallowed by the shorter "SUKOON" key.
+const INSURER_LOGO_KEYS = Object.keys(INSURER_LOGOS).sort((a, b) => b.length - a.length);
+
+const insurerLogoPath = (company: string): string | null => {
+  if (!company) return null;
+
+  const needle = company.toUpperCase().trim();
+  if (INSURER_LOGOS[needle]) return INSURER_LOGOS[needle];
+
+  const key = INSURER_LOGO_KEYS.find(candidate => needle.includes(candidate));
+  return key ? INSURER_LOGOS[key] : null;
+};
+
+const loadDocumentAssets = async () => {
+  const [cover, logo, mascot] = await Promise.all([
+    loadImageAsDataUri(COVER_IMAGE_PATH),
+    loadImageAsDataUri(LOGO_IMAGE_PATH),
+    loadImageAsDataUri(MASCOT_IMAGE_PATH)
+  ]);
+  return { cover, logo, mascot };
+};
+
+// Only the insurers actually being compared are inlined, so a three-column
+// comparison never carries the whole logo library.
+const loadInsurerLogos = async (companies: string[]): Promise<Record<string, string>> => {
+  const unique = Array.from(new Set(companies.filter(Boolean)));
+
+  const entries = await Promise.all(
+    unique.map(async company => {
+      const path = insurerLogoPath(company);
+      if (!path) return null;
+      const dataUri = await loadImageAsDataUri(path);
+      return dataUri ? ([company, dataUri] as const) : null;
+    })
+  );
+
+  return Object.fromEntries(entries.filter(Boolean) as (readonly [string, string])[]);
+};
 
 // Turn a company name into its column in the benefits sheet. A company added via
 // "+ Add Company" isn't in TRAVEL_COMPANIES, so it gets the full set of benefit
@@ -304,6 +469,55 @@ const getTravelBenefits = (company: string) => {
     return TRAVEL_BENEFITS.map(row => ({ label: row.label, value: '' }));
   }
   return TRAVEL_BENEFITS.map(row => ({ label: row.label, value: row.values[columnIndex] ?? '' }));
+};
+
+// Small maroon outline glyphs shown beside each Particulars label. Drawn inline
+// rather than loaded as files so the downloaded document stays self-contained.
+const ICON_SHAPES: Record<string, string> = {
+  shield: '<path d="M12 2l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V5z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3.5 2.5 14.5 0 18M12 3c-2.5 3.5-2.5 14.5 0 18"/>',
+  clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9.5 4h5v3h-5z"/><path d="M9 11h6M9 15h6"/>',
+  shieldCross: '<path d="M12 2l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V5z"/><path d="M9.6 9.6l4.8 4.8M14.4 9.6l-4.8 4.8"/>',
+  percent: '<circle cx="8" cy="8" r="2.5"/><circle cx="16" cy="16" r="2.5"/><path d="M18 6L6 18"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  tag: '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
+  document: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h4"/>',
+  calculator: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8"/><path d="M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+  receipt: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>'
+};
+
+// Matched on the label text, not on a fixed row list, so a product with its own
+// particulars (Marine, Fidelity Guarantee, ...) still picks up sensible icons.
+// Order matters — the first match wins, so "Premium Rate" must be tested before
+// the broader "premium" rule.
+const ICON_RULES: { pattern: RegExp; shape: keyof typeof ICON_SHAPES }[] = [
+  { pattern: /scope|cover(age)?$/i, shape: 'shield' },
+  { pattern: /geograph|territor|jurisdict/i, shape: 'globe' },
+  { pattern: /condition|extension|warrant/i, shape: 'clipboard' },
+  { pattern: /exclusion|exception/i, shape: 'shieldCross' },
+  { pattern: /deductible|excess|franchise/i, shape: 'percent' },
+  { pattern: /rate/i, shape: 'trend' },
+  { pattern: /premium/i, shape: 'tag' },
+  { pattern: /fee|charge/i, shape: 'document' },
+  { pattern: /vat|tax|levy/i, shape: 'calculator' },
+  { pattern: /total|grand|payable/i, shape: 'receipt' }
+];
+
+// Browsers do not offer a line break after "/" or "-", so a long compound label
+// ("Conditions/Extensions") would otherwise split mid-word in the narrow
+// Particulars column. <wbr> marks the sensible break points instead.
+const formatParticularLabel = (label: string) =>
+  label
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/([/-])/g, '$1<wbr>');
+
+const iconFor = (label: string) => {
+  const shape = ICON_RULES.find(rule => rule.pattern.test(label))?.shape;
+  // An unmatched particular falls back to the generic document glyph rather than
+  // leaving a ragged column with some labels indented and some not.
+  return `<svg class="p-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_SHAPES[shape ?? 'document']}</svg>`;
 };
 
 // Builds the <tbody> of the printed comparison table. Rows are assembled first
@@ -317,6 +531,10 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
     values: string[];
     isHeader?: boolean;
     isTotal?: boolean;
+    // Set explicitly rather than inferred from the label: travel benefits like
+    // "Permanent Total Disablement" contain financial words but are not
+    // financial rows, and would otherwise be emphasised as if they were.
+    isMoney?: boolean;
     // Travel repeats the same wording in every column for these rows, which in a
     // narrow column wraps to ~19 lines and pushes the table onto a third page.
     // Where all columns agree, print the text once across the full width.
@@ -350,12 +568,12 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
 
   rows.push(
     { label: 'Premium Rate', values: comparison.quotes.map(q => text(q.premiumRate)) },
-    { label: 'Premium (AED)', values: comparison.quotes.map(q => text(q.premium)) },
-    { label: 'Policy Fee (AED)', values: comparison.quotes.map(q => text(q.policyFee)) }
+    { label: 'Premium (AED)', isMoney: true, values: comparison.quotes.map(q => text(q.premium)) },
+    { label: 'Policy Fee (AED)', isMoney: true, values: comparison.quotes.map(q => text(q.policyFee)) }
   );
 
   if (!isGLPA) {
-    rows.push({ label: 'VAT (5%)', values: comparison.quotes.map(q => `AED ${q.vat}`) });
+    rows.push({ label: 'VAT (5%)', isMoney: true, values: comparison.quotes.map(q => `AED ${q.vat}`) });
   }
 
   rows.push({
@@ -369,17 +587,20 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
     // Section bands (e.g. "C. Personal Accident") span the full width and
     // don't consume an S.No.
     if (row.isHeader) {
-      return `<tr><td class="sno"></td><td class="particulars" colspan="${columnCount + 1}" style="background:#D9E1F2;">${row.label}</td></tr>`;
+      return `<tr class="section-row"><td class="sno"></td><td class="particulars" colspan="${columnCount + 1}">${row.label}</td></tr>`;
     }
 
     sno += 1;
-    const rowStyle = row.isTotal ? ' style="background: #f0f8ff; font-weight: bold;"' : '';
-    const lead = `<td class="sno">${sno}</td><td class="particulars">${row.label}</td>`;
+    // Financial rows carry a little more weight than the wording rows above
+    // them, and the total is the strongest line on the page.
+    const rowClass = row.isTotal ? 'total-row' : row.isMoney ? 'money-row' : '';
+    const rowAttr = rowClass ? ` class="${rowClass}"` : '';
+    const lead = `<td class="sno">${sno}</td><td class="particulars"><span class="p-label">${iconFor(row.label)}<span>${formatParticularLabel(row.label)}</span></span></td>`;
 
     // Only merge when the collapse is lossless: every column carries identical text.
     const allMatch = columnCount > 1 && row.values.every(v => v === row.values[0]);
     if (isTravel && row.collapsible && allMatch) {
-      return `<tr${rowStyle}>${lead}<td colspan="${columnCount}">${row.values[0]}</td></tr>`;
+      return `<tr${rowAttr}>${lead}<td colspan="${columnCount}">${row.values[0]}</td></tr>`;
     }
 
     const cells = row.values.map((value, i) => {
@@ -387,49 +608,732 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
       return `<td${cls}>${value}</td>`;
     }).join('');
 
-    return `<tr${rowStyle}>${lead}${cells}</tr>`;
+    return `<tr${rowAttr}>${lead}${cells}</tr>`;
   }).join('');
 };
 
-// Travel prints ~36 rows. These overrides shrink the type and padding so the
-// comparison still lands on a single page after the cover image.
+// Travel prints ~36 rows. These overrides tighten the type and padding so the
+// comparison still lands on as few sheets as possible after the cover page,
+// without dropping below a readable size.
 const TRAVEL_COMPACT_CSS = `
-        .container { padding: 8px; }
-        .header { padding: 8px; margin-bottom: 8px; }
-        .title { font-size: 16px; margin-bottom: 0; }
-        .ref-date { font-size: 9px; margin-bottom: 6px; }
-        .customer-details { padding: 8px; margin-bottom: 8px; }
-        .customer-details h3 { font-size: 11px; padding-bottom: 3px; }
-        .details-grid { font-size: 8px; gap: 4px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-        table { font-size: 8px; margin-bottom: 8px; }
-        th { padding: 3px 2px; font-size: 8px; }
-        /* Company names are the key column labels — keep them a step larger than
-           the body text even in the compact layout. Costs one row's height. */
-        .company-header { font-size: 9.5px; padding: 5px 3px; line-height: 1.25; }
-        td { padding: 1px 3px; font-size: 8px; line-height: 1.15; }
-        .sno { width: 18px; }
-        /* Benefit values are short (amounts, "Not Covered"), so give the label
-           column enough width to stay on one line — a wrapped label doubles the
-           height of every one of the ~36 rows. */
-        .particulars { width: 200px; font-weight: bold; }
-        .advisor-comment { padding: 6px; margin-top: 8px; font-size: 9px; }
-        .advisor-comment h4 { font-size: 10px; margin-bottom: 2px; }
-        .advisor-comment p { margin: 2px 0; }
-        .summary { padding: 6px; margin-top: 6px; font-size: 8px; }
-        .summary h3 { font-size: 10px; margin: 0 0 2px 0; padding-bottom: 2px; }
-        .summary p { margin: 1px 0; }
+        .doc-title { font-size: 15pt; }
+        .cmp-table { font-size: 7.6pt; }
+        .cmp-table th { padding: 5px 3px; font-size: 7.6pt; }
+        .cmp-table td { padding: 3px 5px; font-size: 7.6pt; line-height: 1.3; }
+        .cmp-table .company-header { font-size: 8.4pt; }
+        .p-label { gap: 4px; }
+        .p-icon { width: 9px; height: 9px; }
+        .total-row td { font-size: 8.6pt; }
+        .advisor-note { font-size: 8pt; padding: 8px 10px; }
+        .company-logo { max-height: 6mm; margin-bottom: 2px; }
+`;
+
+// ============ COMPARISON DOCUMENT (PRINT / PDF) ============
+// The quotation document — cover sheet plus comparison — is emitted as one
+// standalone HTML file. Both the generator and the saved-history list build it
+// from here, so a comparison downloaded from either place is identical.
+
+type DocumentAssets = {
+  cover: string | null;
+  logo: string | null;
+  mascot: string | null;
+  // Company name -> inlined logo. Insurers with no logo are simply absent.
+  insurerLogos?: Record<string, string>;
+};
+
+// Row values already carry deliberate markup (bullet lists joined with <br>), so
+// only operator-typed free text and insurer names are escaped — enough to stop a
+// stray angle bracket in a company name from breaking the document it is
+// emailed inside.
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const FOOTER_ICON_SHAPES: Record<string, string> = {
+  pin: '<path d="M12 21s7-6 7-11a7 7 0 10-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a12 12 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  globe: ICON_SHAPES.globe
+};
+
+const footerIcon = (shape: keyof typeof FOOTER_ICON_SHAPES) =>
+  `<svg class="f-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${FOOTER_ICON_SHAPES[shape]}</svg>`;
+
+const DOCUMENT_CSS = `
+        :root {
+            --maroon: #6B1020;
+            --maroon-deep: #4E0A16;
+            --gold: #C08A2E;
+            --gold-light: #DCC07A;
+            --gold-pale: #F3E7C9;
+            /* Sampled from the cover artwork so both pages sit on the same paper. */
+            --cream: #FCF4EB;
+            --ivory: #FFFEFA;
+            --label-tint: #F5EADA;
+            --ink: #2B2B2B;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #EDE8DE;
+            color: var(--ink);
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-size: 10pt;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* One A4 portrait sheet. Height is deliberately not fixed, so a long
+           comparison flows onto further sheets instead of being clipped. */
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 8mm auto;
+            padding: 11mm 12mm 0;
+            background: var(--cream);
+            border: 1px solid #E3D9C4;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Exactly one A4 sheet, edge to edge. The artwork is drawn at A4
+           proportions (1055x1491, within 0.1% of 1:1.4142) and bleeds to its own
+           edges with no white margin, so 100% 100% fills the sheet exactly:
+           nothing is cropped, nothing is letterboxed, and the residual stretch
+           is far below anything visible. */
+        .cover-sheet {
+            position: relative;
+            width: 210mm;
+            height: 297mm;
+            min-height: 0;
+            margin: 0 auto;
+            padding: 0;
+            border: 0;
+            box-shadow: none;
+            overflow: hidden;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 100% 100%;
+            page-break-after: always;
+        }
+        /* Copy sits in the artwork's empty cards. Flex-centred so a short line
+           and a five-line paragraph both sit correctly in the same card. The
+           bottom padding lifts the text clear of the gold divider drawn near
+           each card's foot. */
+        .cover-copy {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 0 4mm 6mm;
+            color: #3A2A22;
+            font-size: 9pt;
+            line-height: 1.45;
+        }
+        .cover-copy strong { font-weight: 700; color: #2B2B2B; }
+        .cover-stars { color: #2E9E5B; letter-spacing: 1px; }
+        /* Keep the stars and the score on one line, as in the artwork. */
+        .cover-rating { white-space: nowrap; }
+
+        /* ---------- Header ---------- */
+        .doc-header {
+            display: grid;
+            grid-template-columns: 34mm 1fr 34mm;
+            align-items: center;
+            gap: 5mm;
+            position: relative;
+            z-index: 1;
+        }
+        /* Both marks are constrained by height so they optically match each
+           other regardless of their differing aspect ratios. */
+        .brand-logo, .brand-mascot { max-width: 100%; max-height: 26mm; height: auto; display: block; }
+        .brand-logo { justify-self: start; }
+        .brand-mascot { justify-self: end; }
+        .brand-name { text-align: center; }
+        .brand-name-main {
+            display: block;
+            font-size: 26pt;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: #111111;
+            line-height: 1.05;
+        }
+        .brand-name-sub {
+            display: block;
+            font-size: 13pt;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            color: #1B1B1B;
+        }
+
+        /* ---------- Gold rule with centre diamond ---------- */
+        .gold-rule { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 3.5mm 0; }
+        .gold-rule .line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-light), var(--gold)); }
+        .gold-rule .line:last-child { background: linear-gradient(90deg, var(--gold), var(--gold-light), transparent); }
+        .gold-rule .diamond { width: 6px; height: 6px; background: var(--gold); transform: rotate(45deg); flex: none; }
+        .gold-rule .diamond.small { width: 4px; height: 4px; background: var(--gold-light); }
+
+        /* ---------- Title ---------- */
+        /* Deliberately not boxed — the title sits on the cream sheet with a gold
+           rule beneath it, matching the Individual Medical template. */
+        .doc-title {
+            margin: 0;
+            text-align: center;
+            font-size: 17pt;
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: 0.3px;
+            color: var(--maroon);
+            text-transform: uppercase;
+        }
+
+        /* ---------- Quote reference / date ---------- */
+        .quote-meta {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10mm;
+            margin-bottom: 4.5mm;
+            font-size: 10.5pt;
+        }
+        .quote-meta strong { color: var(--maroon); font-weight: 700; }
+        .quote-meta .divider { width: 1px; height: 14px; background: var(--gold); }
+
+        /* ---------- Comparison table ---------- */
+        .cmp-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 9pt;
+            background: var(--ivory);
+        }
+        .cmp-table thead th {
+            padding: 6px 5px;
+            text-align: center;
+            font-weight: 700;
+            color: #FFFFFF;
+            border: 1px solid rgba(255,255,255,0.25);
+            vertical-align: middle;
+        }
+        /* The .sno/.particulars body rules below set a dark colour, and being
+           later in the sheet at equal specificity they would otherwise repaint
+           the header labels dark-on-maroon. Re-assert white here. */
+        .cmp-table thead .sno, .cmp-table thead .particulars { background: var(--maroon); color: #FFFFFF; }
+        .cmp-table thead .sno { font-size: 8pt; }
+        /* White, as in the Individual Medical template: insurer logos are drawn
+           for a white ground, and most of these files carry their own white
+           background, so anything else frames them in torn rectangles. */
+        .cmp-table thead .company-header {
+            background: #FFFFFF;
+            color: var(--maroon-deep);
+            font-size: 10pt;
+            letter-spacing: 0.3px;
+            line-height: 1.25;
+            border-color: #EADFC4;
+        }
+        /* Bounded by max-width/max-height rather than object-fit: html2canvas,
+           which rasterises the PDF, ignores object-fit and stretches the image
+           to whatever box it is given. Letting layout do the scaling keeps every
+           logo at its true aspect ratio. */
+        .company-logo {
+            display: block;
+            max-width: 100%;
+            max-height: 9mm;
+            width: auto;
+            height: auto;
+            margin: 0 auto 3px;
+        }
+        .company-name { display: block; font-weight: 700; }
+
+        .cmp-table td {
+            padding: 4.5px 8px;
+            border: 1px solid #EADFC4;
+            vertical-align: top;
+            line-height: 1.45;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        .cmp-table tbody tr:nth-child(even) td { background: #FDFAF2; }
+        .cmp-table .sno { text-align: center; font-weight: 700; color: var(--maroon); }
+        .cmp-table .particulars { font-weight: 700; color: var(--maroon-deep); }
+        /* The benefit label column carries its own warm tint so it reads as a
+           spine down the page, as in the Individual Medical template. Specific
+           enough to beat the striping rule above; the section and total bands
+           still override it, so those stay full-width. */
+        .cmp-table tbody tr td.sno,
+        .cmp-table tbody tr td.particulars { background: var(--label-tint); }
+
+        .p-label { display: flex; align-items: flex-start; gap: 6px; color: var(--maroon); min-width: 0; }
+        /* Fixed box and flex:none keep the glyph from stretching the row or
+           squeezing a long label. */
+        .p-icon { width: 11px; height: 11px; flex: none; margin-top: 1px; }
+        /* A flex child will not shrink below its longest word by default, so a
+           single-token label ("Conditions/Extensions") would spill into the
+           neighbouring insurer column. Allow it to break anywhere. */
+        .p-label > span { color: var(--maroon-deep); min-width: 0; overflow-wrap: break-word; }
+
+        .section-row td { background: var(--gold-pale) !important; color: var(--maroon); font-weight: 700; letter-spacing: 0.3px; }
+
+        .money-row td { font-weight: 600; }
+        .total-row td {
+            background: var(--gold-pale) !important;
+            color: var(--maroon);
+            font-weight: 800;
+            font-size: 11pt;
+            border-top: 1.5px solid var(--gold);
+            border-bottom: 1.5px solid var(--gold);
+        }
+        .recommended { box-shadow: inset 0 0 0 2px var(--gold); }
+
+        /* ---------- Advisor note ---------- */
+        .advisor-note {
+            margin-top: 4mm;
+            padding: 9px 12px;
+            background: var(--ivory);
+            border: 1px solid var(--gold-light);
+            border-left: 3px solid var(--maroon);
+            font-size: 9pt;
+            page-break-inside: avoid;
+        }
+        .advisor-note h4 { margin: 0 0 4px; font-size: 9.5pt; color: var(--maroon); letter-spacing: 0.3px; text-transform: uppercase; }
+        .advisor-note p { margin: 0; line-height: 1.5; }
+
+        /* ---------- Footer ---------- */
+        .doc-footer {
+            margin: 6mm -12mm 0;
+            padding: 4mm 12mm 5mm;
+            background: linear-gradient(180deg, var(--maroon) 0%, var(--maroon-deep) 100%);
+            color: #F6EEDD;
+            page-break-inside: avoid;
+        }
+        .footer-banner { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 4mm; }
+        .footer-banner .text { font-size: 10.5pt; font-weight: 700; letter-spacing: 1.2px; color: var(--gold-light); white-space: nowrap; }
+        .footer-banner .line { width: 18mm; height: 1px; background: var(--gold); opacity: 0.8; }
+        .footer-banner .diamond { width: 5px; height: 5px; background: var(--gold); transform: rotate(45deg); }
+
+        .footer-grid { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 8mm; align-items: start; }
+        .footer-col { display: flex; gap: 7px; font-size: 8.5pt; line-height: 1.5; }
+        .footer-col + .footer-col { border-left: 1px solid rgba(220,192,122,0.35); padding-left: 8mm; }
+        .footer-stack { display: flex; flex-direction: column; gap: 3mm; }
+        .footer-row { display: flex; gap: 7px; }
+        .footer-label { color: var(--gold-light); font-weight: 600; }
+        .f-icon { width: 12px; height: 12px; flex: none; margin-top: 2px; color: var(--gold); }
+
+        /* ---------- Print ---------- */
+        @page { size: A4 portrait; margin: 10mm; }
+
         @media print {
-            body { font-size: 8px; }
-            .container { padding: 6px; }
-            table { font-size: 7.5px; }
-            td { padding: 1px 3px; font-size: 7.5px; line-height: 1.15; }
-            th { padding: 3px 2px; font-size: 7.5px; }
-            /* Let the cover image size to its content so it can't spill a blank page. */
-            .page { min-height: auto; }
-            .image-page { min-height: auto; padding: 10px; }
-            .nsib-image { max-height: 60vh; }
+            body { background: #FFFFFF; }
+            .sheet {
+                width: auto;
+                min-height: 0;
+                margin: 0;
+                padding: 0;
+                border: 0;
+                box-shadow: none;
+                overflow: visible;
+            }
+            .doc-footer { margin-left: 0; margin-right: 0; padding-left: 8mm; padding-right: 8mm; }
+            /* Repeat the column headers whenever the comparison runs on. */
+            .cmp-table thead { display: table-header-group; }
+            .cmp-table tr { page-break-inside: avoid; }
+            /* Bleed out over the page margin so the cover prints edge to edge on
+               all four sides. A named @page with margin:0 would be tidier, but
+               Chrome applies a named page's size to every page in the document,
+               which shrinks the comparison sheets too. */
+            .cover-sheet {
+                margin: -10mm;
+                width: 210mm;
+                height: 297mm;
+                page-break-after: always;
+            }
         }
 `;
+
+const buildDocumentHeader = (assets: DocumentAssets) => `
+    <header class="doc-header">
+        ${assets.logo ? `<img class="brand-logo" src="${assets.logo}" alt="New Shield Insurance Brokers L.L.C." />` : '<span></span>'}
+        <div class="brand-name">
+            <span class="brand-name-main">NEW SHIELD</span>
+            <span class="brand-name-sub">INSURANCE BROKERS L.L.C.</span>
+        </div>
+        ${assets.mascot ? `<img class="brand-mascot" src="${assets.mascot}" alt="" />` : '<span></span>'}
+    </header>
+    <div class="gold-rule"><span class="line"></span><span class="diamond small"></span><span class="diamond"></span><span class="diamond small"></span><span class="line"></span></div>`;
+
+const DOCUMENT_FOOTER = `
+        <footer class="doc-footer">
+            <div class="footer-banner">
+                <span class="line"></span><span class="diamond"></span>
+                <span class="text">YOUR INSURANCE CHANNEL PARTNER</span>
+                <span class="diamond"></span><span class="line"></span>
+            </div>
+            <div class="footer-grid">
+                <div class="footer-col">
+                    ${footerIcon('pin')}
+                    <div>
+                        Suite 2801, One by Omniyat<br>
+                        Al Mustaqbal Street, Business Bay, Dubai, U.A.E.<br>
+                        P.O Box 233640<br>
+                        UAE Central Bank Registration Number: 200
+                    </div>
+                </div>
+                <div class="footer-col">
+                    <div class="footer-stack">
+                        <div class="footer-row">
+                            ${footerIcon('phone')}
+                            <div><span class="footer-label">Call us on</span><br>047058000</div>
+                        </div>
+                        <div class="footer-row">
+                            ${footerIcon('mail')}
+                            <div>enquiry@nsib.ae</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="footer-col">
+                    ${footerIcon('globe')}
+                    <div><span class="footer-label">Visit our website</span><br>www.nsib.ae</div>
+                </div>
+            </div>
+        </footer>`;
+
+// Formats to the dd/mm/yyyy shown on the quotation. Saved records hold an ISO
+// timestamp, but a hand-edited record could hold anything, so an unparseable
+// value falls back to its date portion rather than rendering "Invalid Date".
+const formatQuoteDate = (value: string) => {
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? value.substring(0, 10) : parsed.toLocaleDateString('en-GB');
+};
+
+const buildComparisonDocument = (comparison: SavedComparison, assets: DocumentAssets) => {
+  const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
+  const isTravel = comparison.insuranceLine.includes('TRAVEL');
+  const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
+
+  const columnCount = comparison.quotes.length;
+  // Insurer columns share whatever the two fixed columns leave, so 2, 3 or 6
+  // insurers all produce even columns rather than a ragged table.
+  const insurerWidth = columnCount > 0 ? (72 / columnCount).toFixed(3) : '72';
+  // Step the body type down as columns are added instead of letting a wide
+  // comparison overflow the sheet. The floor is 7.4pt — still legible in print.
+  const bodyFont = columnCount <= 3 ? 9 : columnCount === 4 ? 8.4 : columnCount === 5 ? 7.9 : 7.4;
+
+  const title = `${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escapeHtml(comparison.insuranceLine)} - Insurance Comparison</title>
+    <style>
+${DOCUMENT_CSS}
+        .cmp-table { font-size: ${bodyFont}pt; }
+${isTravel ? TRAVEL_COMPACT_CSS : ''}
+    </style>
+</head>
+<body>
+${buildCoverPage(assets.cover)}
+
+    <section class="sheet comparison-sheet">
+${buildDocumentHeader(assets)}
+
+        <h1 class="doc-title">${escapeHtml(title)}</h1>
+        <div class="gold-rule"><span class="line"></span><span class="diamond"></span><span class="line"></span></div>
+
+        <div class="quote-meta">
+            <span>Quote Ref: <strong>${escapeHtml(comparison.referenceNumber)}</strong></span>
+            <span class="divider"></span>
+            ${comparison.enquiryNumber ? `<span>Enquiry No: <strong>${escapeHtml(comparison.enquiryNumber)}</strong></span>
+            <span class="divider"></span>
+            ` : ''}<span>Date: <strong>${escapeHtml(formatQuoteDate(comparison.date))}</strong></span>
+        </div>
+
+        <table class="cmp-table">
+            <colgroup>
+                <col style="width:6%">
+                <col style="width:22%">
+                ${comparison.quotes.map(() => `<col style="width:${insurerWidth}%">`).join('')}
+            </colgroup>
+            <thead>
+                <tr>
+                    <th class="sno">S.No.</th>
+                    <th class="particulars">Particulars</th>
+                    ${comparison.quotes.map(quote => {
+                      const logo = assets.insurerLogos?.[quote.company];
+                      return `<th class="company-header">${
+                        logo ? `<img class="company-logo" src="${logo}" alt="${escapeHtml(quote.company)}" />` : ''
+                      }<span class="company-name">${escapeHtml(quote.company)}</span></th>`;
+                    }).join('')}
+                </tr>
+            </thead>
+            <tbody>${tableBody}</tbody>
+        </table>
+
+        ${comparison.advisorComment ? `
+        <div class="advisor-note">
+            <h4>Advisor Comment</h4>
+            <p>${escapeHtml(comparison.advisorComment).replace(/\n/g, '<br>')}</p>
+        </div>` : ''}
+
+${DOCUMENT_FOOTER}
+    </section>
+</body>
+</html>`;
+};
+
+// Downloads the document as a standalone .html file. Shared by the generator and
+// the saved-history list so both produce the same artefact.
+// Renders the document off-screen inside its own iframe. The iframe matters:
+// the document's stylesheet sets rules on body, *, table, th and td, and
+// injecting that into the app's own page would restyle the whole UI. Inside an
+// iframe the CSS is sealed off, and html2canvas still resolves styles correctly
+// because it works from the element's ownerDocument.
+const renderDocumentInFrame = async (htmlContent: string) => {
+  const frame = document.createElement('iframe');
+  // Positioned off-screen rather than display:none — a hidden frame has no
+  // layout, so everything would rasterise at zero height.
+  frame.setAttribute('aria-hidden', 'true');
+  // Wider than a page so a sheet can be laid out oversized while it is measured
+  // for the fit-to-one-page pass, without the frame clipping it.
+  frame.style.cssText = 'position:fixed;left:-20000px;top:0;width:320mm;height:297mm;border:0;visibility:hidden;';
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument;
+  if (!doc) {
+    frame.remove();
+    throw new Error('Could not open a frame to render the document');
+  }
+
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+
+  // Every image is an inlined data URI, so decoding is local — but it is still
+  // asynchronous, and rasterising before it finishes yields blank artwork.
+  await Promise.all(
+    Array.from(doc.images).map(img =>
+      img.complete ? Promise.resolve() : new Promise<void>(resolve => {
+        img.addEventListener('load', () => resolve(), { once: true });
+        img.addEventListener('error', () => resolve(), { once: true });
+      })
+    )
+  );
+  if (doc.fonts?.ready) await doc.fonts.ready;
+
+  return { frame, doc };
+};
+
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+
+// The floor on printed body type. Laying a sheet out wider and scaling it back
+// down shrinks its text, so this — not an arbitrary width ratio — is what limits
+// how hard a comparison may be squeezed onto one page. It matters because the
+// lines start from different sizes: a general comparison sets 9pt and can take a
+// 28% widen, while travel already sets 7.6pt to fit its ~36 benefit rows and can
+// only take 8% before its figures stop being comparable, so it paginates.
+const MIN_EFFECTIVE_FONT_PT = 7;
+
+// Lays the sheet out wider so its content reflows shorter, until its proportions
+// match A4. The whole sheet is then drawn over the full page, so the cream
+// background and the maroon footer still bleed to the paper edge.
+//
+// The earlier approach — rasterising at page width and shrinking the image —
+// preserved the aspect ratio by leaving white bars down both sides, which is
+// exactly the gap this avoids. Returns the layout width to render at, or null
+// when the content genuinely needs more than one page.
+const widthThatFitsOnePage = (sheet: HTMLElement, baseWidthPx: number) => {
+  const ratio = A4_HEIGHT_MM / A4_WIDTH_MM;
+
+  // How far this particular sheet may be widened before its type drops below the
+  // legibility floor.
+  const view = sheet.ownerDocument.defaultView;
+  const table = sheet.querySelector('.cmp-table');
+  const fontPx = view && table ? parseFloat(view.getComputedStyle(table).fontSize) : 12;
+  const maxFactor = Math.max(1, fontPx / (MIN_EFFECTIVE_FONT_PT * (96 / 72)));
+
+  // Stepped rather than solved for. Widening reflows text, so height falls in
+  // discrete jumps as lines rewrap — it plateaus for several percent, then drops
+  // — and an iterative estimator reads those plateaus as convergence and gives
+  // up while a workable width is still ahead of it. Walking up in small steps
+  // also returns the *smallest* width that fits, keeping the type as large as
+  // possible. Each step is a reflow only, no rasterising, so this is cheap.
+  for (let factor = 1; factor <= maxFactor + 1e-9; factor += 0.02) {
+    const width = Math.round(baseWidthPx * factor);
+    sheet.style.width = `${width}px`;
+    if (sheet.scrollHeight <= width * ratio + 2) return width;
+  }
+
+  return null;
+};
+
+// Where a sheet taller than one page should be cut. Slicing blindly at the page
+// height would saw a table row in half, so each cut is pulled back to the last
+// row boundary that still fits. Falls back to a hard cut when a single row is
+// taller than a page, which is the only way to make progress.
+const pageCutPoints = (sheet: HTMLElement, pageHeightPx: number) => {
+  const sheetTop = sheet.getBoundingClientRect().top;
+  const rowBottoms = Array.from(sheet.querySelectorAll('tr'))
+    .map(row => row.getBoundingClientRect().bottom - sheetTop)
+    .sort((a, b) => a - b);
+
+  const total = sheet.scrollHeight;
+  const cuts: number[] = [];
+  let start = 0;
+
+  // The 1px slack stops a rounding remainder producing a final near-empty page.
+  while (total - start > pageHeightPx + 1) {
+    const limit = start + pageHeightPx;
+    let cut = 0;
+    for (const bottom of rowBottoms) {
+      if (bottom > start && bottom <= limit) cut = bottom;
+    }
+    if (cut <= start) cut = limit;
+    cuts.push(cut);
+    start = cut;
+  }
+
+  cuts.push(total);
+  return cuts;
+};
+
+// Builds the PDF a sheet at a time. html2pdf.js was tried first, but its page
+// maths misreads an element belonging to another document — it turned a 633mm
+// document into nine pages instead of three. Driving jsPDF directly makes the
+// pagination explicit and checkable.
+const writePdf = async (doc: Document, filename: string) => {
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas')
+  ]);
+
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const sheets = Array.from(doc.querySelectorAll<HTMLElement>('.sheet'));
+  let firstPage = true;
+
+  for (const sheet of sheets) {
+    // On-screen page furniture. html2canvas rasterises the element itself, so
+    // the border and shadow would print as a hairline frame around every page.
+    sheet.style.margin = '0';
+    sheet.style.border = '0';
+    sheet.style.boxShadow = 'none';
+
+    const baseWidthPx = sheet.getBoundingClientRect().width;
+
+    // A sheet running only a little past the page would otherwise throw a
+    // near-empty extra page for the sake of a couple of rows.
+    if (sheet.scrollHeight > baseWidthPx * (A4_HEIGHT_MM / A4_WIDTH_MM)) {
+      const fitWidth = widthThatFitsOnePage(sheet, baseWidthPx);
+      if (fitWidth) {
+        const fitted = await html2canvas(sheet, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#FFFFFF',
+          logging: false,
+          windowWidth: fitWidth,
+          windowHeight: sheet.scrollHeight
+        });
+
+        if (!firstPage) pdf.addPage();
+        firstPage = false;
+        // Drawn over the whole page, so the background bleeds to every edge.
+        pdf.addImage(fitted.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+        sheet.style.width = '';
+        continue;
+      }
+      // Too long to fit — restore the page width and paginate below.
+      sheet.style.width = '';
+    }
+
+    const canvas = await html2canvas(sheet, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#FFFFFF',
+      logging: false,
+      windowWidth: sheet.scrollWidth,
+      windowHeight: sheet.scrollHeight
+    });
+
+    // Canvas pixels per rendered CSS pixel, so cut points measured off the live
+    // DOM map onto the rasterised image.
+    const pxRatio = canvas.width / sheet.scrollWidth;
+    const pageHeightPx = sheet.scrollWidth * (A4_HEIGHT_MM / A4_WIDTH_MM);
+    const cuts = pageCutPoints(sheet, pageHeightPx);
+
+    // Cuts land on row boundaries, so most slices are shorter than a full page.
+    // Each one is drawn onto a full-page canvas pre-filled with the sheet's own
+    // background, otherwise the unused strip at the foot of the page stays
+    // unpainted and prints as a white band.
+    const sheetBg = doc.defaultView?.getComputedStyle(sheet).backgroundColor;
+    const pageBg = !sheetBg || sheetBg === 'rgba(0, 0, 0, 0)' ? '#FFFFFF' : sheetBg;
+    const fullPagePx = Math.round(pageHeightPx * pxRatio);
+
+    let start = 0;
+    for (const cut of cuts) {
+      const sliceTop = Math.round(start * pxRatio);
+      if (Math.round((cut - start) * pxRatio) <= 0) { start = cut; continue; }
+
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = fullPagePx;
+      const ctx = slice.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = pageBg;
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, -sliceTop);
+      }
+
+      if (!firstPage) pdf.addPage();
+      firstPage = false;
+
+      // Every slice is now exactly one page, so it covers the sheet edge to edge.
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
+
+      start = cut;
+    }
+  }
+
+  pdf.save(filename);
+};
+
+const downloadComparisonDocument = async (comparison: SavedComparison) => {
+  const [assets, insurerLogos] = await Promise.all([
+    loadDocumentAssets(),
+    loadInsurerLogos(comparison.quotes.map(q => q.company))
+  ]);
+
+  const htmlContent = buildComparisonDocument(comparison, { ...assets, insurerLogos });
+  const filename = `insurance_comparison_${comparison.referenceNumber}`;
+  const { frame, doc } = await renderDocumentInFrame(htmlContent);
+
+  try {
+    await writePdf(doc, `${filename}.pdf`);
+  } catch (error) {
+    // A failed PDF conversion should not cost the advisor the document, so fall
+    // back to the self-contained HTML, which every browser can print to PDF.
+    console.error('PDF export failed, falling back to HTML download:', error);
+
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.html`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  } finally {
+    frame.remove();
+  }
+};
 
 // ============ QUOTE GENERATOR PAGE ============
 function QuoteGeneratorPage({ 
@@ -688,7 +1592,7 @@ function QuoteGeneratorPage({
     }
 
     // Generate HTML file
-    downloadComparison(comparisonData);
+    await downloadComparison(comparisonData);
 
     // Reset form and edit state
     setIsEditing(false);
@@ -723,262 +1627,7 @@ function QuoteGeneratorPage({
     setShowAddCompany(false);
   };
 
-  const downloadComparison = (comparison: SavedComparison) => {
-    // Check if GLPA insurance for VAT handling
-    const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
-    const isTravel = comparison.insuranceLine.includes('TRAVEL');
-    const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
-
-    // Create HTML content with NSIB image as first page
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${comparison.insuranceLine} - Insurance Comparison</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
-        .page:last-child { page-break-after: auto; }
-        
-        /* First Page - NSIB Image */
-        .image-page { 
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .nsib-image {
-            max-width: 95%;
-            max-height: 85vh;
-            width: auto;
-            height: auto;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 20px;
-        }
-        .image-caption {
-            font-size: 24px;
-            font-weight: bold;
-            color: #203864;
-            margin-bottom: 10px;
-        }
-        .image-subtitle {
-            font-size: 16px;
-            color: #6c757d;
-        }
-
-        /* Second Page - Report Details */
-        .report-page { 
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center;
-            min-height: 100vh;
-            padding: 40px;
-        }
-        .report-title {
-            font-size: 42px;
-            font-weight: bold;
-            color: #203864;
-            margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-        }
-        .report-subtitle {
-            font-size: 24px;
-            color: #4472C4;
-            margin-bottom: 40px;
-        }
-        .report-details {
-            background: rgba(255,255,255,0.95);
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            border: 2px solid #4472C4;
-        }
-        .report-details h3 {
-            color: #203864;
-            margin-top: 0;
-            font-size: 28px;
-            border-bottom: 2px solid #4472C4;
-            padding-bottom: 10px;
-        }
-        .report-details p {
-            color: #495057;
-            margin: 15px 0;
-            font-size: 18px;
-            font-weight: 500;
-        }
-        .report-footer {
-            margin-top: 50px;
-            color: #6c757d;
-            font-size: 16px;
-        }
-
-        /* Third Page - Comparison Data */
-        .comparison-page { background: #f8f9fa; }
-        .container { max-width: 100%; margin: 0; padding: 15px; }
-        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
-        .ref-date { display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 14px; }
-        .customer-details { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; page-break-inside: avoid; }
-        .customer-details h3 { color: #203864; border-bottom: 2px solid #4472C4; padding-bottom: 5px; margin-top: 0; font-size: 16px; }
-        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px; }
-        .detail-item { }
-        .detail-label { font-weight: bold; color: #555; }
-        .detail-value { color: #333; }
-        
-        /* Optimized table for single page */
-        table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin-bottom: 20px;
-            font-size: 11px;
-            /* Travel adds ~27 benefit rows, which cannot fit on one page. */
-            page-break-inside: ${isTravel ? 'auto' : 'avoid'};
-        }
-        th { 
-            background: #4472C4; 
-            color: white; 
-            padding: 8px 4px; 
-            text-align: center; 
-            border: 1px solid #ddd; 
-            font-weight: bold; 
-            font-size: 11px;
-        }
-        td { 
-            padding: 6px 4px; 
-            border: 1px solid #ddd; 
-            vertical-align: top; 
-            font-size: 10px;
-            line-height: 1.3;
-        }
-        .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
-        .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
-        .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
-        /* th sets color:white, but .sno/.particulars/.company-header each override
-           the background to a light colour without resetting the text colour, which
-           left every header cell white-on-near-white. Restore the solid blue band
-           the th rule already intended, so company names read clearly. */
-        thead th,
-        thead th.sno,
-        thead th.particulars,
-        thead th.company-header { background: #4472C4; color: #ffffff; }
-        .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .advisor-comment { background: #FFC000; color: #333; padding: 10px; border-radius: 8px; margin-top: 15px; font-size: 12px; }
-        .advisor-comment h4 { margin-top: 0; color: #333; font-size: 13px; }
-        .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
-        
-        @media print {
-            body { margin: 0; font-size: 10px; }
-            .container { padding: 10px; }
-            table { font-size: 9px; }
-            td { padding: 4px 2px; }
-            th { padding: 6px 2px; }
-        }
-${isTravel ? TRAVEL_COMPACT_CSS : ''}
-    </style>
-</head>
-<body>
-    <!-- FIRST PAGE: NSIB IMAGE -->
-    <div class="page image-page">
-        <img src="https://i.imgur.com/j0pz4Ll.png" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
-        <div class="image-caption">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="image-subtitle">Professional Insurance Solutions</div>
-    </div>
-
-    <!-- SECOND PAGE: Comparison Details -->
-    <div class="page comparison-page">
-        <div class="container">
-            <div class="header">
-                <div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div>
-            </div>
-            
-            <div class="ref-date">
-                <span>Reference: ${comparison.referenceNumber}</span>
-                <span>Date: ${comparison.date.substring(0, 10)}</span>
-            </div>
-
-            <div class="customer-details">
-                <h3>Customer Information</h3>
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Customer Name:</div>
-                        <div class="detail-value">${comparison.customerName || 'N/A'}</div>
-                    </div>
-                    ${comparison.address ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Address:</div>
-                        <div class="detail-value">${comparison.address}</div>
-                    </div>` : ''}
-                    ${comparison.businessActivity ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Business Activity:</div>
-                        <div class="detail-value">${comparison.businessActivity}</div>
-                    </div>` : ''}
-                    ${comparison.location ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Location/Premises:</div>
-                        <div class="detail-value">${comparison.location}</div>
-                    </div>` : ''}
-                    ${comparison.enquiryNumber ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Enquiry Number:</div>
-                        <div class="detail-value">${comparison.enquiryNumber}</div>
-                    </div>` : ''}
-                    ${comparison.propertyLimit ? `
-                    <div class="detail-item">
-                        <div class="detail-label">Property Limit:</div>
-                        <div class="detail-value">${comparison.propertyLimit}</div>
-                    </div>` : ''}
-                </div>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th class="sno">S.No.</th>
-                        <th class="particulars">Particulars</th>
-                        ${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody>${tableBody}</tbody>
-            </table>
-
-            ${comparison.advisorComment ? `
-            <div class="advisor-comment">
-                <h4>Advisor Comment:</h4>
-                <p>${comparison.advisorComment}</p>
-            </div>` : ''}
-
-            <div class="summary">
-                <h3>Summary</h3>
-                <p><strong>Insurance Line:</strong> ${comparison.insuranceLine}</p>
-                <p><strong>Companies Compared:</strong> ${comparison.quotes.length}</p>
-                <p><strong>Recommended Option:</strong> ${comparison.quotes.find(q => q.isRecommended)?.company || 'None marked'}</p>
-                <p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>`;
-
-    // Create and download HTML file
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `insurance_comparison_${comparison.referenceNumber}.html`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
+  const downloadComparison = downloadComparisonDocument;
 
   return (
     <div className="grid grid-cols-1 gap-5">
@@ -1431,10 +2080,14 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [lineFilter, setLineFilter] = useState('all');
+  const [fileImporting, setFileImporting] = useState(false);
+  const [exportableCount, setExportableCount] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadHistory();
     setLocalCount(readLocalHistory().length);
+    setExportableCount(readAllLocalRecords().length);
   }, []);
 
   // Comparisons saved before the move to shared storage still live in this
@@ -1446,6 +2099,105 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     } catch {
       return [];
     }
+  };
+
+  // Everything this browser still holds, including records already imported once
+  // (the import keeps a backup copy). Deduped by id, since a record that was
+  // imported and then saved again would otherwise appear in both keys.
+  const readAllLocalRecords = (): SavedComparison[] => {
+    const byId = new Map<string, SavedComparison>();
+
+    for (const key of ['generalInsuranceHistory', 'generalInsuranceHistoryBackup']) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!Array.isArray(stored)) continue;
+        for (const record of stored) {
+          if (record?.id) byId.set(record.id, record);
+        }
+      } catch {
+        // A corrupt key shouldn't hide the records in the other one.
+      }
+    }
+
+    return Array.from(byId.values());
+  };
+
+  // Hands the advisor a file they can email in, for when talking someone through
+  // DevTools isn't realistic. Exports what this browser holds, not the shared list.
+  const exportLocalToFile = () => {
+    const records = readAllLocalRecords();
+    if (records.length === 0) {
+      alert('This browser has no locally saved comparisons to export.');
+      return;
+    }
+
+    const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nsib-comparisons-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Takes an exported file from another advisor's browser and pushes it into the
+  // shared store. Records keep their original id and date, so a file imported
+  // twice overwrites rather than duplicates, and month counts stay accurate.
+  const importFromFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Clear immediately so picking the same file again still fires onChange.
+    event.target.value = '';
+    if (!file) return;
+
+    let records: SavedComparison[];
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!Array.isArray(parsed)) throw new Error('not an array');
+      records = parsed.filter((r) => r?.id && r?.customerName);
+    } catch {
+      alert('That file could not be read. Expected a JSON export produced by the Export button.');
+      return;
+    }
+
+    if (records.length === 0) {
+      alert('No valid comparisons found in that file.');
+      return;
+    }
+
+    const existingIds = new Set(history.map(c => c.id));
+    let added = 0;
+    let updated = 0;
+    let failed = 0;
+
+    setFileImporting(true);
+
+    for (const comparison of records) {
+      try {
+        const response = await fetch('/api/comparisons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(comparison)
+        });
+        if (response.ok) {
+          if (existingIds.has(comparison.id)) updated++;
+          else added++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        console.error('Failed to import comparison:', comparison?.referenceNumber, error);
+        failed++;
+      }
+    }
+
+    setFileImporting(false);
+    alert(
+      `Import finished.\n\n` +
+      `${added} new comparison${added === 1 ? '' : 's'} added\n` +
+      `${updated} already present (overwritten with the file's copy)\n` +
+      `${failed} failed`
+    );
+    loadHistory();
   };
 
   const importLocalHistory = async () => {
@@ -1518,95 +2270,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     }
   };
 
-  const downloadComparison = (comparison: SavedComparison) => {
-    // Same download function as main generator with NSIB image first
-    const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
-    const isTravel = comparison.insuranceLine.includes('TRAVEL');
-    const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${comparison.insuranceLine} - Insurance Comparison</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        .page { width: 100%; min-height: 100vh; page-break-after: always; padding: 20px; box-sizing: border-box; }
-        .page:last-child { page-break-after: auto; }
-        
-        /* First Page - NSIB Image */
-        .image-page { 
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            text-align: center; min-height: 100vh; padding: 20px;
-        }
-        .nsib-image { max-width: 95%; max-height: 85vh; width: auto; height: auto; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 20px; }
-        .image-caption { font-size: 24px; font-weight: bold; color: #203864; margin-bottom: 10px; }
-        .image-subtitle { font-size: 16px; color: #6c757d; }
-
-        /* Remaining styles same as before for comparison pages... */
-        .report-page { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 100vh; padding: 40px; }
-        .report-title { font-size: 42px; font-weight: bold; color: #203864; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
-        .report-subtitle { font-size: 24px; color: #4472C4; margin-bottom: 40px; }
-        .report-details { background: rgba(255,255,255,0.95); padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 2px solid #4472C4; }
-        .report-details h3 { color: #203864; margin-top: 0; font-size: 28px; border-bottom: 2px solid #4472C4; padding-bottom: 10px; }
-        .report-details p { color: #495057; margin: 15px 0; font-size: 18px; font-weight: 500; }
-        .report-footer { margin-top: 50px; color: #6c757d; font-size: 16px; }
-        .comparison-page { background: #f8f9fa; }
-        .container { max-width: 100%; margin: 0; padding: 15px; }
-        .header { text-align: center; background: linear-gradient(135deg, #4472C4, #203864); color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .title { font-size: 22px; font-weight: bold; margin-bottom: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; page-break-inside: ${isTravel ? 'auto' : 'avoid'}; }
-        th { background: #4472C4; color: white; padding: 8px 4px; text-align: center; border: 1px solid #ddd; font-weight: bold; font-size: 11px; }
-        td { padding: 6px 4px; border: 1px solid #ddd; vertical-align: top; font-size: 10px; line-height: 1.3; }
-        .sno { text-align: center; font-weight: bold; background: #f8f9fa; width: 40px; }
-        .particulars { font-weight: bold; background: #f8f9fa; width: 120px; }
-        .company-header { background: #D9E1F2; font-weight: bold; text-align: center; }
-        /* th sets color:white, but .sno/.particulars/.company-header each override
-           the background to a light colour without resetting the text colour, which
-           left every header cell white-on-near-white. Restore the solid blue band
-           the th rule already intended, so company names read clearly. */
-        thead th,
-        thead th.sno,
-        thead th.particulars,
-        thead th.company-header { background: #4472C4; color: #ffffff; }
-        .recommended { background: #fff3cd; border-left: 4px solid #ffc107; }
-        .summary { background: #e8f5e8; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; }
-${isTravel ? TRAVEL_COMPACT_CSS : ''}
-    </style>
-</head>
-<body>
-    <div class="page image-page">
-        <img src="https://i.imgur.com/Qgh7Try.jpeg" alt="NSIB - New Shield Insurance Brokers" class="nsib-image" />
-        <div class="image-caption">NEW SHIELD INSURANCE BROKERS L.L.C.</div>
-        <div class="image-subtitle">Professional Insurance Solutions</div>
-    </div>
-
-
-
-    <div class="page comparison-page">
-        <div class="container">
-            <div class="header"><div class="title">${comparison.insuranceLine.toUpperCase()} - INSURANCE COMPARISON</div></div>
-            <table>
-                <thead><tr><th class="sno">S.No.</th><th class="particulars">Particulars</th>${comparison.quotes.map(quote => `<th class="company-header">${quote.company}</th>`).join('')}</tr></thead>
-                <tbody>${tableBody}</tbody>
-            </table>
-            <div class="summary"><h3>Summary</h3><p><strong>Generated:</strong> ${new Date().toLocaleDateString('en-GB')} by NSIB General Insurance Quote System</p></div>
-        </div>
-    </div>
-</body>
-</html>`;
-
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `insurance_comparison_${comparison.referenceNumber}.html`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
+  const downloadComparison = downloadComparisonDocument;
 
   // Month boundaries for the "this month" / "last month" counters.
   const now = new Date();
@@ -1665,13 +2329,39 @@ ${isTravel ? TRAVEL_COMPACT_CSS : ''}
             <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
             <p className="text-sm text-gray-600">☁️ Shared across all advisors</p>
           </div>
-          <button
-            onClick={loadHistory}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            {loading ? '🔄 Loading...' : '🔄 Refresh'}
-          </button>
+          <div className="flex gap-2">
+            {exportableCount > 0 && (
+              <button
+                onClick={exportLocalToFile}
+                className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded font-bold hover:bg-gray-100 transition"
+                title="Save this browser's own comparisons to a file you can send in"
+              >
+                ⬇️ Export ({exportableCount})
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={importFromFile}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={fileImporting}
+              className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded font-bold hover:bg-gray-100 transition disabled:opacity-50"
+              title="Load an exported file from another advisor into the shared history"
+            >
+              {fileImporting ? '⏳ Importing...' : '📂 Import file'}
+            </button>
+            <button
+              onClick={loadHistory}
+              disabled={loading}
+              className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700 transition disabled:opacity-50"
+            >
+              {loading ? '🔄 Loading...' : '🔄 Refresh'}
+            </button>
+          </div>
         </div>
         
         {!loading && !loadError && (
@@ -1836,7 +2526,7 @@ ${isTravel ? TRAVEL_COMPACT_CSS : ''}
                     ✏️ Edit
                   </button>
                   <button 
-                    onClick={() => downloadComparison(comparison)} 
+                    onClick={() => { void downloadComparison(comparison); }}
                     className="bg-purple-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-purple-700 transition"
                   >
                     📥 Download
