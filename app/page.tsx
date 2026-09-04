@@ -1367,6 +1367,10 @@ function QuoteGeneratorPage({
   const [isEditing, setIsEditing] = useState(false);
   const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
   const [saving, setSaving] = useState(false);
+  // The insurance line whose default companies have already been seeded into the
+  // selection. Loading a comparison for editing sets it too, so the seeding
+  // effect below leaves that record's own selection alone.
+  const seededLineRef = useRef<string | null>(null);
 
   // Auto-load comparison when editComparison prop changes
   useEffect(() => {
@@ -1375,32 +1379,76 @@ function QuoteGeneratorPage({
     }
   }, [editComparison]);
 
-  // Update available companies when insurance line changes
+  // Available companies: the line's own list plus anything added with
+  // "+ Add Company", deduped so a custom name matching a default cannot appear
+  // twice in the picker.
   useEffect(() => {
-    if (insuranceLine) {
-      const defaultCompanies = getInsuranceCompanies(insuranceLine);
-      const allCompanies = [...defaultCompanies, ...customCompanies];
-      setAvailableCompanies(allCompanies);
-      setSelectedCompanies(defaultCompanies); // Start with default companies selected
+    if (!insuranceLine) {
+      setAvailableCompanies([]);
+      return;
     }
+
+    const defaultCompanies = getInsuranceCompanies(insuranceLine);
+    setAvailableCompanies([
+      ...defaultCompanies,
+      ...customCompanies.filter(company => !defaultCompanies.includes(company))
+    ]);
   }, [insuranceLine, customCompanies]);
 
-  // Initialize quotes when selected companies change (but not during editing)
+  // Seed the selection with the line's default companies — but only when the
+  // line itself changes. This used to re-run whenever a custom company was
+  // added, which reset the selection back to the defaults and dropped both the
+  // company just added and, while editing, the companies the saved record held.
   useEffect(() => {
-    if (insuranceLine && selectedCompanies.length > 0 && !isEditing) {
-      const newQuotes = selectedCompanies.map(company => createEmptyQuote(company));
-      setQuotes(newQuotes);
-    }
-  }, [selectedCompanies, insuranceLine]); // Removed isEditing dependency to prevent loop
+    if (!insuranceLine || seededLineRef.current === insuranceLine) return;
+
+    seededLineRef.current = insuranceLine;
+    setSelectedCompanies(getInsuranceCompanies(insuranceLine));
+    // A different line brings its own scope/deductible defaults, so the previous
+    // line's quotes are discarded rather than carried into the reconcile below.
+    setQuotes([]);
+  }, [insuranceLine]);
+
+  // Keep exactly one quote per selected company, in selection order.
+  // Reconciled rather than rebuilt, so ticking a fourth insurer onto a saved
+  // three-insurer comparison adds that column while the figures already entered
+  // for the other three stay put. Quotes were previously never rebuilt while
+  // editing, so an insurer added to a saved comparison had no quote behind it —
+  // it showed no card to fill in and never reached the generated document.
+  useEffect(() => {
+    if (!insuranceLine) return;
+
+    setQuotes(prev => {
+      // Held per company as a queue rather than a single entry, so a record that
+      // somehow carries the same insurer twice keeps two independent quotes
+      // instead of two references to one.
+      const existing = new Map<string, Quote[]>();
+      prev.forEach(quote => {
+        const queued = existing.get(quote.company);
+        if (queued) queued.push(quote);
+        else existing.set(quote.company, [quote]);
+      });
+
+      const next = selectedCompanies.map(company => existing.get(company)?.shift() ?? createEmptyQuote(company));
+      // Returning the same array when nothing moved keeps this from re-rendering
+      // on every unrelated state change.
+      const unchanged = next.length === prev.length && next.every((quote, i) => quote === prev[i]);
+      return unchanged ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCompanies, insuranceLine]);
 
   // Add new custom company
   const addCustomCompany = () => {
-    if (newCompanyName.trim() && !availableCompanies.includes(newCompanyName.trim())) {
-      const companyName = newCompanyName.trim();
-      setCustomCompanies(prev => [...prev, companyName]);
-      setNewCompanyName('');
-      setShowAddCompany(false);
-    }
+    const companyName = newCompanyName.trim();
+    if (!companyName || availableCompanies.includes(companyName)) return;
+
+    setCustomCompanies(prev => [...prev, companyName]);
+    // Selected as well as added — an advisor who types a company in wants its
+    // column, and the reconcile effect creates the quote to go with it.
+    setSelectedCompanies(prev => (prev.includes(companyName) ? prev : [...prev, companyName]));
+    setNewCompanyName('');
+    setShowAddCompany(false);
   };
 
   // Remove custom company
@@ -1416,6 +1464,9 @@ function QuoteGeneratorPage({
     
     // Load all the data back into the form
     const insuranceLineValue = INSURANCE_LINES.find(line => line.label === comparison.insuranceLine)?.value || '';
+    // Claim the line before setting it, so the seeding effect does not overwrite
+    // this record's companies with the line's defaults.
+    seededLineRef.current = insuranceLineValue;
     setInsuranceLine(insuranceLineValue);
     setCustomerName(comparison.customerName || '');
     setAddress(comparison.address || '');
@@ -1611,6 +1662,9 @@ function QuoteGeneratorPage({
   };
 
   const resetForm = () => {
+    // Cleared, or picking the same line again would find it already seeded and
+    // start with no companies selected.
+    seededLineRef.current = null;
     setInsuranceLine('');
     setCustomerName('');
     setAddress('');
@@ -2080,6 +2134,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [lineFilter, setLineFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [fileImporting, setFileImporting] = useState(false);
   const [exportableCount, setExportableCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2296,9 +2351,35 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     [history]
   );
 
+  // Everything an advisor might recognise a comparison by. Insurer names are
+  // included so "orient" finds every comparison Orient was quoted on.
+  const searchableText = (c: SavedComparison) =>
+    [
+      c.customerName,
+      c.referenceNumber,
+      c.enquiryNumber,
+      c.insuranceLine,
+      c.businessActivity,
+      c.location,
+      c.address,
+      ...c.quotes.map(q => q.company)
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+  // Each word must match, in any field and in any order, so "orient travel"
+  // narrows rather than finding nothing.
+  const searchTerms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
   const filteredHistory = useMemo(() => {
     return history.filter(c => {
       if (lineFilter !== 'all' && c.insuranceLine !== lineFilter) return false;
+
+      if (searchTerms.length > 0) {
+        const haystack = searchableText(c);
+        if (!searchTerms.every(term => haystack.includes(term))) return false;
+      }
 
       const d = new Date(c.date);
       if (isNaN(d.getTime())) return dateFilter === 'all';
@@ -2313,7 +2394,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history, dateFilter, customFrom, customTo, lineFilter]);
+  }, [history, dateFilter, customFrom, customTo, lineFilter, search]);
 
   const filterLabel =
     dateFilter === 'thisMonth' ? 'this month'
@@ -2386,6 +2467,30 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
             </div>
 
             <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="flex-1 min-w-[240px]">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Search</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Customer, reference, enquiry no. or insurer"
+                    className="w-full border border-gray-300 rounded pl-9 pr-8 py-2 text-sm bg-white text-gray-900 focus:border-indigo-500 focus:outline-none"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm"
+                      title="Clear search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Period</label>
                 <select
@@ -2437,9 +2542,9 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                 </select>
               </div>
 
-              {(dateFilter !== 'all' || lineFilter !== 'all') && (
+              {(dateFilter !== 'all' || lineFilter !== 'all' || search !== '') && (
                 <button
-                  onClick={() => { setDateFilter('all'); setLineFilter('all'); setCustomFrom(''); setCustomTo(''); }}
+                  onClick={() => { setDateFilter('all'); setLineFilter('all'); setCustomFrom(''); setCustomTo(''); setSearch(''); }}
                   className="px-3 py-2 rounded text-sm font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 transition"
                 >
                   ✖ Clear
@@ -2449,6 +2554,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
               <p className="text-sm text-gray-700 ml-auto">
                 <strong>{filteredHistory.length}</strong> comparison{filteredHistory.length === 1 ? '' : 's'} {filterLabel}
                 {lineFilter !== 'all' && ` for ${lineFilter}`}
+                {searchTerms.length > 0 && ` matching "${search.trim()}"`}
               </p>
             </div>
           </>
@@ -2486,7 +2592,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
           </div>
         ) : filteredHistory.length === 0 ? (
           <div className="text-center text-gray-400 italic py-20">
-            No comparisons match this filter. Try a different period or line.
+            No comparisons match{searchTerms.length > 0 ? ' this search' : ' this filter'}. Try a different search, period or line.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
