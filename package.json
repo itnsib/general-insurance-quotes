@@ -9,10 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^147.0.2",
     "@vercel/blob": "^2.6.1",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
     "next": "16.0.7",
+    "puppeteer-core": "^24.43.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

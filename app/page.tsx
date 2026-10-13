@@ -2,7 +2,9 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Quote, SavedComparison } from './lib/types';
+import type { Quote, SavedComparison, WorkDriveResult, ZohoEnquiry } from './lib/types';
+import EnquiryPicker from './components/EnquiryPicker';
+import { workDriveNote } from './lib/zoho-client';
 
 // ============ CONSTANTS ============
 const INSURANCE_LINES = [
@@ -361,8 +363,9 @@ const loadImageAsDataUri = async (path: string): Promise<string | null> => {
   }
 };
 
-// Insurer logos for the comparison column headers. Served from public/ and
-// inlined at download time, rather than the external image hosts the IM and GMI
+// Insurer logos for the comparison column headers. Served from public/ (read
+// from disk by the PDF server, inlined into the HTML fallback), rather than the
+// external image hosts the IM and GMI
 // tools use — a rotted link or a blocked host would otherwise leave a broken
 // image in a document already sitting in a customer's inbox.
 const INSURER_LOGOS: Record<string, string> = {
@@ -840,10 +843,8 @@ const DOCUMENT_CSS = `
             line-height: 1.25;
             border-color: #EADFC4;
         }
-        /* Bounded by max-width/max-height rather than object-fit: html2canvas,
-           which rasterises the PDF, ignores object-fit and stretches the image
-           to whatever box it is given. Letting layout do the scaling keeps every
-           logo at its true aspect ratio. */
+        /* Bounded by max-width/max-height rather than a fixed box, so layout
+           does the scaling and every logo keeps its true aspect ratio. */
         .company-logo {
             display: block;
             max-width: 100%;
@@ -1091,247 +1092,92 @@ ${DOCUMENT_FOOTER}
 </html>`;
 };
 
-// Downloads the document as a standalone .html file. Shared by the generator and
-// the saved-history list so both produce the same artefact.
-// Renders the document off-screen inside its own iframe. The iframe matters:
-// the document's stylesheet sets rules on body, *, table, th and td, and
-// injecting that into the app's own page would restyle the whole UI. Inside an
-// iframe the CSS is sealed off, and html2canvas still resolves styles correctly
-// because it works from the element's ownerDocument.
-const renderDocumentInFrame = async (htmlContent: string) => {
-  const frame = document.createElement('iframe');
-  // Positioned off-screen rather than display:none — a hidden frame has no
-  // layout, so everything would rasterise at zero height.
-  frame.setAttribute('aria-hidden', 'true');
-  // Wider than a page so a sheet can be laid out oversized while it is measured
-  // for the fit-to-one-page pass, without the frame clipping it.
-  frame.style.cssText = 'position:fixed;left:-20000px;top:0;width:320mm;height:297mm;border:0;visibility:hidden;';
-  document.body.appendChild(frame);
-
-  const doc = frame.contentDocument;
-  if (!doc) {
-    frame.remove();
-    throw new Error('Could not open a frame to render the document');
-  }
-
-  doc.open();
-  doc.write(htmlContent);
-  doc.close();
-
-  // Every image is an inlined data URI, so decoding is local — but it is still
-  // asynchronous, and rasterising before it finishes yields blank artwork.
-  await Promise.all(
-    Array.from(doc.images).map(img =>
-      img.complete ? Promise.resolve() : new Promise<void>(resolve => {
-        img.addEventListener('load', () => resolve(), { once: true });
-        img.addEventListener('error', () => resolve(), { once: true });
-      })
-    )
-  );
-  if (doc.fonts?.ready) await doc.fonts.ready;
-
-  return { frame, doc };
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  window.URL.revokeObjectURL(url);
 };
 
-const A4_WIDTH_MM = 210;
-const A4_HEIGHT_MM = 297;
-
-// The floor on printed body type. Laying a sheet out wider and scaling it back
-// down shrinks its text, so this — not an arbitrary width ratio — is what limits
-// how hard a comparison may be squeezed onto one page. It matters because the
-// lines start from different sizes: a general comparison sets 9pt and can take a
-// 28% widen, while travel already sets 7.6pt to fit its ~36 benefit rows and can
-// only take 8% before its figures stop being comparable, so it paginates.
-const MIN_EFFECTIVE_FONT_PT = 7;
-
-// Lays the sheet out wider so its content reflows shorter, until its proportions
-// match A4. The whole sheet is then drawn over the full page, so the cream
-// background and the maroon footer still bleed to the paper edge.
+// The document's images as site paths, for the PDF server, which answers them
+// from public/ (see app/lib/pdf.ts) — so the request carries no image data and
+// stays far below Vercel's 4.5 MB body limit.
 //
-// The earlier approach — rasterising at page width and shrinking the image —
-// preserved the aspect ratio by leaving white bars down both sides, which is
-// exactly the gap this avoids. Returns the layout width to render at, or null
-// when the content genuinely needs more than one page.
-const widthThatFitsOnePage = (sheet: HTMLElement, baseWidthPx: number) => {
-  const ratio = A4_HEIGHT_MM / A4_WIDTH_MM;
+// The brand artwork comes from public/pdf/: copies scaled to what the page
+// prints (about three times its printed size) and the cover as JPEG. The
+// originals would put 2.4 MB of images into every PDF, pressing the download
+// against Vercel's 4.5 MB response limit for no visible gain.
+const pdfAssets = (comparison: SavedComparison): DocumentAssets => ({
+  cover: '/pdf/nsib-cover.jpg',
+  logo: '/pdf/nsib-logo.png',
+  mascot: '/pdf/nsib-mascot.png',
+  insurerLogos: Object.fromEntries(
+    comparison.quotes
+      .map(q => [q.company, insurerLogoPath(q.company)] as const)
+      .filter((entry): entry is readonly [string, string] => !!entry[1])
+  )
+});
 
-  // How far this particular sheet may be widened before its type drops below the
-  // legibility floor.
-  const view = sheet.ownerDocument.defaultView;
-  const table = sheet.querySelector('.cmp-table');
-  const fontPx = view && table ? parseFloat(view.getComputedStyle(table).fontSize) : 12;
-  const maxFactor = Math.max(1, fontPx / (MIN_EFFECTIVE_FONT_PT * (96 / 72)));
+// Asks the server to turn the document into a PDF. With an enquiry, the server
+// also files it in that enquiry's WorkDrive, and with workdriveOnly it answers
+// with the filing outcome instead of the file.
+const requestPdf = (comparison: SavedComparison, enquiry: ZohoEnquiry | null, workdriveOnly = false) =>
+  fetch('/api/render-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      html: buildComparisonDocument(comparison, pdfAssets(comparison)),
+      filename: `insurance_comparison_${comparison.referenceNumber}.pdf`,
+      enquiryId: enquiry?.id,
+      reference: comparison.referenceNumber,
+      workdriveOnly
+    })
+  });
 
-  // Stepped rather than solved for. Widening reflows text, so height falls in
-  // discrete jumps as lines rewrap — it plateaus for several percent, then drops
-  // — and an iterative estimator reads those plateaus as convergence and gives
-  // up while a workable width is still ahead of it. Walking up in small steps
-  // also returns the *smallest* width that fits, keeping the type as large as
-  // possible. Each step is a reflow only, no rasterising, so this is cheap.
-  for (let factor = 1; factor <= maxFactor + 1e-9; factor += 0.02) {
-    const width = Math.round(baseWidthPx * factor);
-    sheet.style.width = `${width}px`;
-    if (sheet.scrollHeight <= width * ratio + 2) return width;
-  }
-
-  return null;
-};
-
-// Where a sheet taller than one page should be cut. Slicing blindly at the page
-// height would saw a table row in half, so each cut is pulled back to the last
-// row boundary that still fits. Falls back to a hard cut when a single row is
-// taller than a page, which is the only way to make progress.
-const pageCutPoints = (sheet: HTMLElement, pageHeightPx: number) => {
-  const sheetTop = sheet.getBoundingClientRect().top;
-  const rowBottoms = Array.from(sheet.querySelectorAll('tr'))
-    .map(row => row.getBoundingClientRect().bottom - sheetTop)
-    .sort((a, b) => a - b);
-
-  const total = sheet.scrollHeight;
-  const cuts: number[] = [];
-  let start = 0;
-
-  // The 1px slack stops a rounding remainder producing a final near-empty page.
-  while (total - start > pageHeightPx + 1) {
-    const limit = start + pageHeightPx;
-    let cut = 0;
-    for (const bottom of rowBottoms) {
-      if (bottom > start && bottom <= limit) cut = bottom;
-    }
-    if (cut <= start) cut = limit;
-    cuts.push(cut);
-    start = cut;
-  }
-
-  cuts.push(total);
-  return cuts;
-};
-
-// Builds the PDF a sheet at a time. html2pdf.js was tried first, but its page
-// maths misreads an element belonging to another document — it turned a 633mm
-// document into nine pages instead of three. Driving jsPDF directly makes the
-// pagination explicit and checkable.
-const writePdf = async (doc: Document, filename: string) => {
-  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
-    import('jspdf'),
-    import('html2canvas')
-  ]);
-
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const sheets = Array.from(doc.querySelectorAll<HTMLElement>('.sheet'));
-  let firstPage = true;
-
-  for (const sheet of sheets) {
-    // On-screen page furniture. html2canvas rasterises the element itself, so
-    // the border and shadow would print as a hairline frame around every page.
-    sheet.style.margin = '0';
-    sheet.style.border = '0';
-    sheet.style.boxShadow = 'none';
-
-    const baseWidthPx = sheet.getBoundingClientRect().width;
-
-    // A sheet running only a little past the page would otherwise throw a
-    // near-empty extra page for the sake of a couple of rows.
-    if (sheet.scrollHeight > baseWidthPx * (A4_HEIGHT_MM / A4_WIDTH_MM)) {
-      const fitWidth = widthThatFitsOnePage(sheet, baseWidthPx);
-      if (fitWidth) {
-        const fitted = await html2canvas(sheet, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: '#FFFFFF',
-          logging: false,
-          windowWidth: fitWidth,
-          windowHeight: sheet.scrollHeight
-        });
-
-        if (!firstPage) pdf.addPage();
-        firstPage = false;
-        // Drawn over the whole page, so the background bleeds to every edge.
-        pdf.addImage(fitted.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
-        sheet.style.width = '';
-        continue;
-      }
-      // Too long to fit — restore the page width and paginate below.
-      sheet.style.width = '';
-    }
-
-    const canvas = await html2canvas(sheet, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#FFFFFF',
-      logging: false,
-      windowWidth: sheet.scrollWidth,
-      windowHeight: sheet.scrollHeight
-    });
-
-    // Canvas pixels per rendered CSS pixel, so cut points measured off the live
-    // DOM map onto the rasterised image.
-    const pxRatio = canvas.width / sheet.scrollWidth;
-    const pageHeightPx = sheet.scrollWidth * (A4_HEIGHT_MM / A4_WIDTH_MM);
-    const cuts = pageCutPoints(sheet, pageHeightPx);
-
-    // Cuts land on row boundaries, so most slices are shorter than a full page.
-    // Each one is drawn onto a full-page canvas pre-filled with the sheet's own
-    // background, otherwise the unused strip at the foot of the page stays
-    // unpainted and prints as a white band.
-    const sheetBg = doc.defaultView?.getComputedStyle(sheet).backgroundColor;
-    const pageBg = !sheetBg || sheetBg === 'rgba(0, 0, 0, 0)' ? '#FFFFFF' : sheetBg;
-    const fullPagePx = Math.round(pageHeightPx * pxRatio);
-
-    let start = 0;
-    for (const cut of cuts) {
-      const sliceTop = Math.round(start * pxRatio);
-      if (Math.round((cut - start) * pxRatio) <= 0) { start = cut; continue; }
-
-      const slice = document.createElement('canvas');
-      slice.width = canvas.width;
-      slice.height = fullPagePx;
-      const ctx = slice.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = pageBg;
-        ctx.fillRect(0, 0, slice.width, slice.height);
-        ctx.drawImage(canvas, 0, -sliceTop);
-      }
-
-      if (!firstPage) pdf.addPage();
-      firstPage = false;
-
-      // Every slice is now exactly one page, so it covers the sheet edge to edge.
-      pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM);
-
-      start = cut;
-    }
-  }
-
-  pdf.save(filename);
-};
-
-const downloadComparisonDocument = async (comparison: SavedComparison) => {
-  const [assets, insurerLogos] = await Promise.all([
-    loadDocumentAssets(),
-    loadInsurerLogos(comparison.quotes.map(q => q.company))
-  ]);
-
-  const htmlContent = buildComparisonDocument(comparison, { ...assets, insurerLogos });
+// Downloads the comparison as a PDF and, unless `fileIt` is false, files the
+// same PDF in WorkDrive when the comparison is linked to a Zoho enquiry.
+// Returns the WorkDrive outcome (null when nothing was filed).
+const downloadComparisonDocument = async (
+  comparison: SavedComparison,
+  { fileIt = true }: { fileIt?: boolean } = {}
+): Promise<WorkDriveResult | null> => {
   const filename = `insurance_comparison_${comparison.referenceNumber}`;
-  const { frame, doc } = await renderDocumentInFrame(htmlContent);
+  const enquiry = fileIt ? comparison.enquiry ?? null : null;
 
   try {
-    await writePdf(doc, `${filename}.pdf`);
+    const response = await requestPdf(comparison, enquiry);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `PDF server responded ${response.status}`);
+    }
+    const header = response.headers.get('X-WorkDrive-Result');
+    saveBlob(await response.blob(), `${filename}.pdf`);
+    return header ? (JSON.parse(decodeURIComponent(header)) as WorkDriveResult) : null;
   } catch (error) {
-    // A failed PDF conversion should not cost the advisor the document, so fall
-    // back to the self-contained HTML, which every browser can print to PDF.
+    // A failed PDF should not cost the advisor the document, so fall back to
+    // the self-contained HTML, which every browser can print to PDF.
     console.error('PDF export failed, falling back to HTML download:', error);
+    const [assets, insurerLogos] = await Promise.all([
+      loadDocumentAssets(),
+      loadInsurerLogos(comparison.quotes.map(q => q.company))
+    ]);
+    const htmlContent = buildComparisonDocument(comparison, { ...assets, insurerLogos });
+    saveBlob(new Blob([htmlContent], { type: 'text/html' }), `${filename}.html`);
+    return enquiry ? { ok: false, error: 'the PDF server was unavailable, so an HTML copy was downloaded instead.' } : null;
+  }
+};
 
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename}.html`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  } finally {
-    frame.remove();
+// Files the comparison's PDF in its enquiry's WorkDrive, with nothing downloaded.
+const saveComparisonToWorkDrive = async (comparison: SavedComparison): Promise<WorkDriveResult> => {
+  if (!comparison.enquiry) return { ok: false, error: 'Link a Zoho enquiry first.' };
+  try {
+    const response = await requestPdf(comparison, comparison.enquiry, true);
+    const body = await response.json().catch(() => ({}));
+    return body.workdrive || { ok: false, error: body.error || `PDF server responded ${response.status}.` };
+  } catch {
+    return { ok: false, error: 'The PDF server is unavailable. Check your connection.' };
   }
 };
 
@@ -1341,7 +1187,7 @@ function QuoteGeneratorPage({
   editComparison, 
   onCancelEdit 
 }: { 
-  onSaveComplete?: (comparison: SavedComparison) => void;
+  onSaveComplete?: (comparison: SavedComparison, workdrive?: WorkDriveResult | null) => void;
   editComparison?: SavedComparison | null;
   onCancelEdit?: () => void;
 }) {
@@ -1352,6 +1198,9 @@ function QuoteGeneratorPage({
   const [location, setLocation] = useState('');
   const [propertyLimit, setPropertyLimit] = useState('');
   const [enquiryNumber, setEnquiryNumber] = useState('');
+  // The Zoho CRM enquiry this comparison belongs to. When set, its PDF is also
+  // filed in that enquiry's WorkDrive folder.
+  const [enquiry, setEnquiry] = useState<ZohoEnquiry | null>(null);
   const [advisorComment, setAdvisorComment] = useState('');
   
   const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
@@ -1367,6 +1216,9 @@ function QuoteGeneratorPage({
   const [isEditing, setIsEditing] = useState(false);
   const [editingComparison, setEditingComparison] = useState<SavedComparison | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Save to WorkDrive" in progress, and what the last one came to.
+  const [filing, setFiling] = useState(false);
+  const [filingNote, setFilingNote] = useState<{ ok: boolean; text: string; link?: string } | null>(null);
   // The insurance line whose default companies have already been seeded into the
   // selection. Loading a comparison for editing sets it too, so the seeding
   // effect below leaves that record's own selection alone.
@@ -1474,8 +1326,10 @@ function QuoteGeneratorPage({
     setLocation(comparison.location || '');
     setPropertyLimit(comparison.propertyLimit || '');
     setEnquiryNumber(comparison.enquiryNumber || '');
+    setEnquiry(comparison.enquiry || null);
+    setFilingNote(null);
     setAdvisorComment(comparison.advisorComment || '');
-    
+
     // Load quotes and companies - preserve all values including premium
     const companyNames = comparison.quotes.map(q => q.company);
     setSelectedCompanies(companyNames);
@@ -1580,32 +1434,36 @@ function QuoteGeneratorPage({
     setQuotes(newQuotes);
   };
 
-  const saveComparison = async () => {
+  // The comparison as the form holds it, or null (with the reason shown) when
+  // it isn't complete enough to save. `linked` is passed when an enquiry has
+  // just been picked, which saves before React has applied the new state.
+  const buildComparisonData = (linked: ZohoEnquiry | null = enquiry): SavedComparison | null => {
     if (!insuranceLine) {
       alert('Please select an insurance line');
-      return;
+      return null;
     }
-    
+
     if (!customerName.trim()) {
       alert('Please enter customer name');
-      return;
+      return null;
     }
 
     if (quotes.length === 0) {
       alert('Please add at least one quote');
-      return;
+      return null;
     }
 
-    const comparisonData = {
-      id: isEditing && editingComparison ? editingComparison.id : generateId(),
-      date: isEditing && editingComparison ? editingComparison.date : new Date().toISOString(),
+    return {
+      id: editingComparison ? editingComparison.id : generateId(),
+      date: editingComparison ? editingComparison.date : new Date().toISOString(),
       insuranceLine: INSURANCE_LINES.find(il => il.value === insuranceLine)?.label || insuranceLine,
       customerName,
       address,
       businessActivity,
       location,
       propertyLimit,
-      enquiryNumber,
+      enquiryNumber: linked ? linked.enquiryNo : enquiryNumber,
+      enquiry: linked,
       // Filter out empty lines from conditions and exclusions when saving
       quotes: quotes.map(quote => ({
         ...quote,
@@ -1613,13 +1471,14 @@ function QuoteGeneratorPage({
         exclusions: quote.exclusions.filter(e => e.trim().length > 0)
       })),
       advisorComment,
-      referenceNumber: isEditing && editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
+      referenceNumber: editingComparison ? editingComparison.referenceNumber : generateReferenceNumber()
     };
+  };
 
-    // Save to shared Blob storage so every advisor sees the same history
-    setSaving(true);
+  // Saves to shared Blob storage so every advisor sees the same history.
+  const persistComparison = async (comparisonData: SavedComparison) => {
     try {
-      const response = isEditing && editingComparison
+      const response = editingComparison
         ? await fetch(`/api/comparisons/${editingComparison.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -1634,31 +1493,87 @@ function QuoteGeneratorPage({
       if (!response.ok) {
         throw new Error(`Server responded ${response.status}`);
       }
+      return true;
     } catch (saveError) {
       console.error('❌ Save failed:', saveError);
       alert('❌ Failed to save comparison. Please check your connection and try again.');
-      return;
+      return false;
+    }
+  };
+
+  const saveComparison = async () => {
+    const comparisonData = buildComparisonData();
+    if (!comparisonData) return;
+
+    const action = isEditing ? 'updated' : 'saved';
+    let workdrive: WorkDriveResult | null = null;
+
+    setSaving(true);
+    try {
+      if (!(await persistComparison(comparisonData))) return;
+      // Downloads the PDF, and files the same PDF in WorkDrive when an enquiry
+      // is linked.
+      workdrive = await downloadComparison(comparisonData);
     } finally {
       setSaving(false);
     }
-
-    // Generate HTML file
-    await downloadComparison(comparisonData);
 
     // Reset form and edit state
     setIsEditing(false);
     setEditingComparison(null);
     resetForm();
 
-    // Show success message
-    const action = isEditing ? 'updated' : 'saved';
-    
     // Trigger completion page
     if (onSaveComplete) {
-      onSaveComplete(comparisonData);
+      onSaveComplete(comparisonData, workdrive);
     } else {
-      alert(`✅ Comparison ${action} successfully!\nReference: ${comparisonData.referenceNumber}`);
+      alert(`✅ Comparison ${action} successfully!\nReference: ${comparisonData.referenceNumber}\n${workDriveNote(comparisonData.enquiry, workdrive)}`);
     }
+  };
+
+  // Saves the comparison and files its PDF in the enquiry's WorkDrive, with
+  // nothing downloaded — for an advisor who edits a comparison but doesn't need
+  // another local copy. The form stays open on the saved record, so saving
+  // again updates it rather than adding a duplicate.
+  const saveToWorkDrive = async (linked: ZohoEnquiry | null = enquiry) => {
+    if (!linked) {
+      setFilingNote({ ok: false, text: 'Link a Zoho enquiry first.' });
+      return;
+    }
+    const comparisonData = buildComparisonData(linked);
+    if (!comparisonData) return;
+
+    setFiling(true);
+    setFilingNote({ ok: true, text: `Saving to ${linked.enquiryNo}'s WorkDrive…` });
+    try {
+      if (!(await persistComparison(comparisonData))) {
+        setFilingNote(null);
+        return;
+      }
+      setIsEditing(true);
+      setEditingComparison(comparisonData);
+
+      const result = await saveComparisonToWorkDrive(comparisonData);
+      setFilingNote(
+        result?.ok
+          ? { ok: true, text: `Comparison saved and filed in WorkDrive as ${result.fileName}.`, link: result.link }
+          : { ok: false, text: `Comparison saved. ${workDriveNote(linked, result)}` }
+      );
+    } finally {
+      setFiling(false);
+    }
+  };
+
+  // Links (or unlinks) the Zoho enquiry. On a comparison that is already saved,
+  // linking files its PDF in WorkDrive straight away: nobody re-downloads a
+  // quote already sent, so older comparisons would otherwise never be filed.
+  // A comparison still being built is filed when it is saved.
+  const selectEnquiry = (picked: ZohoEnquiry | null) => {
+    setEnquiry(picked);
+    setEnquiryNumber(picked ? picked.enquiryNo : '');
+    setFilingNote(null);
+    if (picked && !customerName.trim()) setCustomerName(picked.contactName || picked.enquiryName);
+    if (picked && editingComparison) void saveToWorkDrive(picked);
   };
 
   const resetForm = () => {
@@ -1672,6 +1587,8 @@ function QuoteGeneratorPage({
     setLocation('');
     setPropertyLimit('');
     setEnquiryNumber('');
+    setEnquiry(null);
+    setFilingNote(null);
     setAdvisorComment('');
     setQuotes([]);
     setAvailableCompanies([]);
@@ -1775,15 +1692,21 @@ function QuoteGeneratorPage({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Enquiry Number</label>
-                  <input
-                    type="text"
-                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                    value={enquiryNumber}
-                    onChange={(e) => setEnquiryNumber(e.target.value)}
-                    placeholder="Enter enquiry number"
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold mb-1 text-gray-800">Zoho Enquiry</label>
+                  {/* Older comparisons hold a hand-typed number and no link; it
+                      seeds the search so linking them is one click. */}
+                  <EnquiryPicker
+                    defaultQuery={(!enquiry && enquiryNumber) || customerName}
+                    enquiry={enquiry}
+                    onSelect={selectEnquiry}
+                    disabled={saving || filing}
                   />
+                  {editingComparison && !enquiry && (
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Picking an enquiry saves this comparison and files its PDF in that enquiry&rsquo;s WorkDrive.
+                    </p>
+                  )}
                 </div>
 
                 {(insuranceLine === 'par' || insuranceLine === 'sme') && (
@@ -2097,11 +2020,22 @@ Press Enter for new line"
               />
             </div>
 
+            {filingNote && (
+              <div className={`mb-4 p-3 rounded-lg border-2 text-sm font-semibold ${filingNote.ok ? 'bg-green-50 border-green-300 text-green-800' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
+                {filingNote.ok ? '📁 ' : '⚠️ '}{filingNote.text}
+                {filingNote.link && (
+                  <a href={filingNote.link} target="_blank" rel="noreferrer" className="ml-2 underline">
+                    Open in WorkDrive
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex gap-4">
               <button
                 onClick={saveComparison}
-                disabled={saving}
+                disabled={saving || filing}
                 className="flex-1 bg-green-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-green-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving
@@ -2109,8 +2043,20 @@ Press Enter for new line"
                   : isEditing ? '💾 Save Changes & Download' : '💾 Save & Download Comparison'}
               </button>
               <button
+                onClick={() => { void saveToWorkDrive(); }}
+                disabled={!enquiry || saving || filing}
+                title={
+                  enquiry
+                    ? `Save this comparison and file its PDF in ${enquiry.enquiryNo}'s WorkDrive — no download`
+                    : 'Link a Zoho enquiry first'
+                }
+                className="bg-indigo-600 text-white px-6 p-4 rounded-lg font-bold hover:bg-indigo-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {filing ? '⏳ Saving to WorkDrive...' : '📁 Save to WorkDrive'}
+              </button>
+              <button
                 onClick={resetForm}
-                disabled={saving}
+                disabled={saving || filing}
                 className="bg-gray-500 text-white px-6 p-4 rounded-lg font-bold hover:bg-gray-600 transition disabled:opacity-50"
               >
                 🔄 Reset
@@ -2325,7 +2271,25 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     }
   };
 
-  const downloadComparison = downloadComparisonDocument;
+  // A copy re-downloaded from history is for the advisor, not a new version of
+  // what was sent, so it isn't filed; "📁 WorkDrive" files it on purpose.
+  const downloadComparison = (comparison: SavedComparison) =>
+    downloadComparisonDocument(comparison, { fileIt: false });
+
+  // The comparison being filed in WorkDrive from its card, if any.
+  const [filingId, setFilingId] = useState<string | null>(null);
+
+  const fileComparison = async (comparison: SavedComparison) => {
+    setFilingId(comparison.id);
+    try {
+      const result = await saveComparisonToWorkDrive(comparison);
+      alert(result?.ok
+        ? `📁 Filed in WorkDrive as ${result.fileName}.`
+        : `⚠️ ${workDriveNote(comparison.enquiry, result)}`);
+    } finally {
+      setFilingId(null);
+    }
+  };
 
   // Month boundaries for the "this month" / "last month" counters.
   const now = new Date();
@@ -2603,6 +2567,13 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                   <div className="font-semibold text-gray-900">{comparison.customerName}</div>
                   <div className="text-xs text-gray-500">{formatDate(comparison.date)}</div>
                   <div className="text-xs text-indigo-600 font-mono">Ref: {comparison.referenceNumber}</div>
+                  {comparison.enquiry ? (
+                    <div className="text-xs text-green-700 font-semibold">🔗 Zoho {comparison.enquiry.enquiryNo}</div>
+                  ) : comparison.enquiryNumber ? (
+                    <div className="text-xs text-gray-500" title="Not linked to Zoho — edit to link it">
+                      Enquiry {comparison.enquiryNumber} (not linked)
+                    </div>
+                  ) : null}
                 </div>
                 
                 <div className="mb-3">
@@ -2637,7 +2608,17 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                   >
                     📥 Download
                   </button>
-                  <button 
+                  {comparison.enquiry && (
+                    <button
+                      onClick={() => { void fileComparison(comparison); }}
+                      disabled={filingId !== null}
+                      className="bg-indigo-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-indigo-700 transition disabled:opacity-50"
+                      title={`File this comparison's PDF in ${comparison.enquiry.enquiryNo}'s WorkDrive`}
+                    >
+                      {filingId === comparison.id ? '⏳' : '📁 WorkDrive'}
+                    </button>
+                  )}
+                  <button
                     onClick={() => deleteComparison(comparison.id)} 
                     className="bg-red-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-red-700 transition"
                   >
@@ -2657,6 +2638,8 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'generator' | 'history' | 'completion'>('generator');
   const [completedComparison, setCompletedComparison] = useState<SavedComparison | null>(null);
+  // What filing in WorkDrive came to, for a comparison linked to a Zoho enquiry.
+  const [completedWorkDrive, setCompletedWorkDrive] = useState<WorkDriveResult | null>(null);
   const [comparisonToEdit, setComparisonToEdit] = useState<SavedComparison | null>(null);
 
   // Handle editing a comparison from history
@@ -2686,6 +2669,19 @@ export default function App() {
                 <p className="font-bold text-blue-800">Reference: {completedComparison.referenceNumber}</p>
                 <p className="text-blue-600">{completedComparison.quotes.length} companies compared</p>
                 <p className="text-blue-600">Generated: {new Date().toLocaleDateString('en-GB')}</p>
+              </div>
+            )}
+            {completedComparison?.enquiry && (
+              <div className={`p-4 rounded-lg mb-6 border-2 ${completedWorkDrive?.ok ? 'bg-green-50 border-green-300 text-green-800' : 'bg-amber-50 border-amber-300 text-amber-900'}`}>
+                <p className="font-bold">
+                  {completedWorkDrive?.ok ? '📁 ' : '⚠️ '}
+                  {workDriveNote(completedComparison.enquiry, completedWorkDrive)}
+                </p>
+                {completedWorkDrive?.ok && (
+                  <a href={completedWorkDrive.link} target="_blank" rel="noreferrer" className="text-sm underline">
+                    Open {completedWorkDrive.fileName} in WorkDrive
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -2760,8 +2756,9 @@ export default function App() {
 
         {currentPage === 'generator' ? (
           <QuoteGeneratorPage 
-            onSaveComplete={(comparison) => {
+            onSaveComplete={(comparison, workdrive) => {
               setCompletedComparison(comparison);
+              setCompletedWorkDrive(workdrive ?? null);
               setCurrentPage('completion');
               setComparisonToEdit(null); // Clear edit state after saving
             }}
