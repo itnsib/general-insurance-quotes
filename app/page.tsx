@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Quote, SavedComparison, WorkDriveResult, ZohoEnquiry } from './lib/types';
 import EnquiryPicker from './components/EnquiryPicker';
 import { workDriveNote } from './lib/zoho-client';
+import { buildComparisonsWorkbook, buildQuotesWorkbook, localDay } from './lib/export-comparisons';
+import { saveBlobAs } from './lib/save-file';
 
 // ============ CONSTANTS ============
 const INSURANCE_LINES = [
@@ -2083,6 +2085,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
   const [search, setSearch] = useState('');
   const [fileImporting, setFileImporting] = useState(false);
   const [exportableCount, setExportableCount] = useState(0);
+  const [exporting, setExporting] = useState<'comparisons' | 'plans' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -2156,7 +2159,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
       if (!Array.isArray(parsed)) throw new Error('not an array');
       records = parsed.filter((r) => r?.id && r?.customerName);
     } catch {
-      alert('That file could not be read. Expected a JSON export produced by the Export button.');
+      alert('That file could not be read. Expected a JSON file produced by the Backup button.');
       return;
     }
 
@@ -2352,8 +2355,10 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
       if (dateFilter === 'lastMonth') return d >= lastMonthStart && d < thisMonthStart;
       if (dateFilter === 'custom') {
         // Dates are inclusive on both ends; an empty box means "unbounded".
-        if (customFrom && d < new Date(`${customFrom}T00:00:00`)) return false;
-        if (customTo && d > new Date(`${customTo}T23:59:59.999`)) return false;
+        // Compared as local yyyy-mm-dd, the same calendar the date boxes use.
+        const day = localDay(d);
+        if (customFrom && day < customFrom) return false;
+        if (customTo && day > customTo) return false;
       }
       return true;
     });
@@ -2366,6 +2371,41 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
     : dateFilter === 'custom' ? 'in the selected range'
     : 'in total';
 
+  // Exports exactly what the filters are showing, as a styled Excel workbook.
+  // The file name records the period so a saved report says what it covers.
+  // layout: 'comparisons' (one row each) | 'plans' (one row per insurer's quote).
+  const exportFiltered = async (layout: 'comparisons' | 'plans') => {
+    const today = localDay(new Date());
+    const scope =
+      dateFilter === 'custom' ? `${customFrom || 'start'}_to_${customTo || today}`
+      : dateFilter === 'thisMonth' ? 'this-month'
+      : dateFilter === 'lastMonth' ? 'last-month'
+      : 'all-time';
+    const filters = {
+      period:
+        dateFilter === 'custom' ? `${customFrom || 'Beginning'} to ${customTo || 'today'}`
+        : dateFilter === 'thisMonth' ? 'This month'
+        : dateFilter === 'lastMonth' ? 'Last month'
+        : 'All time',
+      insuranceLine: lineFilter === 'all' ? 'All lines' : lineFilter,
+      search: search.trim(),
+    };
+
+    setExporting(layout);
+    try {
+      const blob = layout === 'plans'
+        ? await buildQuotesWorkbook(filteredHistory, filters)
+        : await buildComparisonsWorkbook(filteredHistory, filters);
+      // A cancelled "Save as" needs nothing further.
+      await saveBlobAs(blob, `GI-${layout === 'plans' ? 'Plans' : 'Comparisons'}-${scope}-${today}.xlsx`);
+    } catch (error) {
+      console.error('❌ Export failed:', error);
+      alert(`❌ Could not export: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 gap-5">
       <div className="bg-white rounded-xl p-5 shadow-2xl">
@@ -2374,14 +2414,14 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
             <h2 className="text-2xl font-bold text-gray-800">Saved History</h2>
             <p className="text-sm text-gray-600">☁️ Shared across all advisors</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             {exportableCount > 0 && (
               <button
                 onClick={exportLocalToFile}
                 className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded font-bold hover:bg-gray-100 transition"
                 title="Save this browser's own comparisons to a file you can send in"
               >
-                ⬇️ Export ({exportableCount})
+                💾 Backup ({exportableCount})
               </button>
             )}
             <input
@@ -2398,6 +2438,22 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
               title="Load an exported file from another advisor into the shared history"
             >
               {fileImporting ? '⏳ Importing...' : '📂 Import file'}
+            </button>
+            <button
+              onClick={() => { void exportFiltered('comparisons'); }}
+              disabled={loading || exporting !== null || filteredHistory.length === 0}
+              className="bg-green-700 text-white px-4 py-2 rounded font-bold hover:bg-green-800 transition disabled:opacity-50"
+              title="Download the comparisons matching the current filters — one row per comparison (Excel)"
+            >
+              {exporting === 'comparisons' ? '⏳ Exporting...' : `⬇ Export (${filteredHistory.length})`}
+            </button>
+            <button
+              onClick={() => { void exportFiltered('plans'); }}
+              disabled={loading || exporting !== null || filteredHistory.length === 0}
+              className="bg-white text-green-700 border-2 border-green-700 px-4 py-2 rounded font-bold hover:bg-green-50 transition disabled:opacity-50"
+              title="Download every insurer's quote in the filtered comparisons — one row per quote, for pivot tables (Excel)"
+            >
+              {exporting === 'plans' ? '⏳ Exporting...' : '⬇ Plans'}
             </button>
             <button
               onClick={loadHistory}
@@ -2465,7 +2521,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                   <option value="all">All time</option>
                   <option value="thisMonth">This month</option>
                   <option value="lastMonth">Last month</option>
-                  <option value="custom">Custom range</option>
+                  <option value="custom">Date range (from – to)…</option>
                 </select>
               </div>
 
@@ -2476,6 +2532,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                     <input
                       type="date"
                       value={customFrom}
+                      max={customTo || undefined}
                       onChange={e => setCustomFrom(e.target.value)}
                       className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
                     />
@@ -2485,6 +2542,7 @@ function SavedHistoryPage({ onEditComparison }: { onEditComparison?: (comparison
                     <input
                       type="date"
                       value={customTo}
+                      min={customFrom || undefined}
                       onChange={e => setCustomTo(e.target.value)}
                       className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
                     />
