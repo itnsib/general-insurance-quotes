@@ -1,20 +1,19 @@
 // ============================================================================
 // Saved History export — the comparisons on screen, as an Excel workbook
 // ============================================================================
-// .xlsx so the report can carry formatting: columns are grouped under coloured
-// bands (Comparison, Zoho Enquiry, Client, …) so a reader can find their way
-// across ~25 columns, with frozen headers, filters and AED number formats.
+// .xlsx in the NSIB theme (maroon, gold, sand, cream), laid out like the Motor
+// tool's report: a title, two lines of notes saying what was exported and when,
+// then a maroon header row with filters, frozen alongside the Ref No. column.
 // Two layouts: one row per comparison (the report), or one row per insurer's
-// quote (for pivot tables). Each workbook also carries a "Report Info" sheet
-// recording the filters it was exported with.
+// quote (for pivot tables).
 //
 // exceljs is large, so it's loaded only when someone actually exports. The
 // type-only import below is erased at build time and adds nothing to the bundle.
 
-import type { Borders, Fill, Workbook } from 'exceljs';
+import type { Borders, Fill, Font, Workbook } from 'exceljs';
 import type { Quote, SavedComparison } from './types';
 
-// What the on-screen filters were, for the Report Info sheet.
+// What the on-screen filters were, for the notes under the title.
 export interface ExportFilters {
   period: string;
   insuranceLine: string;
@@ -70,60 +69,42 @@ const businessType = (c: SavedComparison) =>
 // Older comparisons hold a number typed in by hand and no linked enquiry.
 const enquiryNoOf = (c: SavedComparison) => c.enquiry?.enquiryNo || c.enquiryNumber;
 
+// 16-Oct-2026 14:05, on the local clock.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const stamp = (d: Date) =>
+  `${String(d.getDate()).padStart(2, '0')}-${MONTHS[d.getMonth()]}-${d.getFullYear()} ` +
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
 // ---------------------------------------------------------------------------
-// Layouts: column groups, each with a band colour
+// Layouts
 // ---------------------------------------------------------------------------
 // text | int | money | date | flag (Yes/No) | business (New/Renewal) | status
 type ColumnType = 'text' | 'int' | 'money' | 'date' | 'flag' | 'business' | 'status';
 interface Column { header: string; width: number; type: ColumnType }
-interface Group { title: string; color: string; columns: Column[] }
 
 const C = (header: string, width: number, type: ColumnType = 'text'): Column => ({ header, width, type });
 
-const RED = '#c8102e';
-
-const COMPARISON_GROUPS: Group[] = [
-  {
-    title: 'Comparison',
-    color: RED,
-    columns: [C('Quote Ref No.', 18), C('New / Renewal', 13, 'business'), C('Insurance Line', 30)],
-  },
-  {
-    title: 'Zoho Enquiry',
-    color: '#1f3a5f',
-    columns: [C('Enquiry No.', 14), C('Enquiry Name', 30), C('Insurance Type', 20)],
-  },
-  {
-    title: 'Client',
-    color: '#0f766e',
-    columns: [
-      C('Client Name', 28),
-      C('Business Activity', 24),
-      C('Location / Risk Address', 28),
-      C('Address', 28),
-      C('Property Insured - Limit', 20),
-    ],
-  },
-  {
-    title: 'Quotes',
-    color: '#6d28d9',
-    columns: [C('Quotes', 8, 'int'), C('Insurers Quoted', 30), C('Quotes Compared', 60)],
-  },
-  {
-    title: 'Premiums (AED)',
-    color: '#15803d',
-    columns: [C('Lowest', 13, 'money'), C('Highest', 13, 'money'), C('Spread', 13, 'money')],
-  },
-  {
-    title: 'Recommended (AED)',
-    color: '#a16207',
-    columns: [C('Recommended Insurer', 28), C('Recommended Premium', 14, 'money')],
-  },
-  {
-    title: 'Record',
-    color: '#4b5563',
-    columns: [C('Created Date', 17, 'date')],
-  },
+const COMPARISON_COLUMNS: Column[] = [
+  C('Quote Ref No.', 18),
+  C('New / Renewal', 15, 'business'),
+  C('Insurance Line', 30),
+  C('Enquiry No.', 14),
+  C('Enquiry Name', 30),
+  C('Insurance Type', 20),
+  C('Client Name', 28),
+  C('Business Activity', 24),
+  C('Location / Risk Address', 28),
+  C('Address', 28),
+  C('Property Insured - Limit', 20),
+  C('Quotes', 8, 'int'),
+  C('Insurers Quoted', 30),
+  C('Quotes Compared', 60),
+  C('Lowest Premium (AED)', 15, 'money'),
+  C('Highest Premium (AED)', 15, 'money'),
+  C('Spread (AED)', 13, 'money'),
+  C('Recommended Insurer', 28),
+  C('Recommended Premium (AED)', 16, 'money'),
+  C('Created Date', 17, 'date'),
 ];
 
 const comparisonRow = (c: SavedComparison): Value[] => {
@@ -161,46 +142,24 @@ const comparisonRow = (c: SavedComparison): Value[] => {
   ];
 };
 
-const QUOTE_GROUPS: Group[] = [
-  {
-    title: 'Comparison',
-    color: RED,
-    columns: [
-      C('Quote Ref No.', 18),
-      C('New / Renewal', 13, 'business'),
-      C('Enquiry No.', 14),
-      C('Client Name', 28),
-      C('Insurance Line', 30),
-      C('Business Activity', 24),
-    ],
-  },
-  {
-    title: 'Quote',
-    color: '#6d28d9',
-    columns: [
-      C('Insurer', 26),
-      C('Status', 13, 'status'),
-      C('Deductible', 30),
-      C('Premium Rate', 14),
-      C('Geographical Limits', 20),
-    ],
-  },
-  {
-    title: 'Premium (AED)',
-    color: '#15803d',
-    columns: [
-      C('Net Premium', 13, 'money'),
-      C('Policy Fee', 11, 'money'),
-      C('VAT', 11, 'money'),
-      C('Total Premium', 14, 'money'),
-      C('Cheapest in Comparison', 13, 'flag'),
-    ],
-  },
-  {
-    title: 'Record',
-    color: '#4b5563',
-    columns: [C('Created Date', 17, 'date')],
-  },
+const QUOTE_COLUMNS: Column[] = [
+  C('Quote Ref No.', 18),
+  C('New / Renewal', 15, 'business'),
+  C('Enquiry No.', 14),
+  C('Client Name', 28),
+  C('Insurance Line', 30),
+  C('Business Activity', 24),
+  C('Insurer', 26),
+  C('Status', 13, 'status'),
+  C('Deductible', 30),
+  C('Premium Rate', 14),
+  C('Geographical Limits', 20),
+  C('Net Premium (AED)', 14, 'money'),
+  C('Policy Fee (AED)', 13, 'money'),
+  C('VAT (AED)', 12, 'money'),
+  C('Total Premium (AED)', 15, 'money'),
+  C('Cheapest in Comparison', 13, 'flag'),
+  C('Created Date', 17, 'date'),
 ];
 
 const quoteRows = (c: SavedComparison): Value[][] => {
@@ -233,137 +192,130 @@ const quoteRows = (c: SavedComparison): Value[][] => {
 };
 
 // ---------------------------------------------------------------------------
-// Styling
+// Styling — NSIB theme
 // ---------------------------------------------------------------------------
-const argb = (hex: string) => `FF${hex.replace('#', '').toUpperCase()}`;
+const MAROON = '8A0E20';
+const GOLD = 'D9A441';
+const SAND = 'F0E4CC';
+const CREAM = 'FAF6ED';
+const INK = '2B2118';
+const MUTED = '7A6A55';
 
-// The band colour washed towards white, for the column-header row.
-const tint = (hex: string, mixWithWhite = 0.82) => {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const mix = (c: number) => Math.round(c + (255 - c) * mixWithWhite);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
-  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
-};
-
-const fill = (hex: string): Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: argb(hex) } });
-const thin = (hex: string) => ({ style: 'thin' as const, color: { argb: argb(hex) } });
+const font = (color: string, extra: Partial<Font> = {}): Partial<Font> =>
+  ({ name: 'Calibri', size: 10, color: { argb: `FF${color}` }, ...extra });
+const fill = (hex: string): Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}` } });
+const thin = (hex: string) => ({ style: 'thin' as const, color: { argb: `FF${hex}` } });
 const box = (hex: string): Partial<Borders> => ({ top: thin(hex), left: thin(hex), bottom: thin(hex), right: thin(hex) });
 
-const ZEBRA = '#faf4e6'; // every other data row
-const GRID = '#e5e7eb';
+// Text goes in as a one-run rich-text value, which exceljs writes as an inline
+// string: Excel shows it exactly as typed (Arabic included) and never reads a
+// client name such as "=1+1" as a formula.
+const text = (s: string) => ({ richText: [{ text: s }] });
 
-// Coloured "pills" for the values a reader scans for: [fill, text].
-const PILLS: Partial<Record<ColumnType, Record<string, [string, string]>>> = {
-  business: { New: ['#dcfce7', '#166534'], Renewal: ['#fef3c7', '#92400e'] },
-  flag: { Yes: ['#dcfce7', '#166534'] },
-  status: { Recommended: ['#fef3c7', '#92400e'], Renewal: ['#dbeafe', '#1e40af'] },
-};
+// Rows above the table: title, two notes, a blank, then the header.
+const HEADER_ROW = 5;
+// Room for the filter arrow, so it doesn't sit over the heading.
+const ARROW_ROOM = 3;
 
-const addDataSheet = (workbook: Workbook, name: string, groups: Group[], rows: Value[][]) => {
-  const columns = groups.flatMap(g => g.columns.map(c => ({ ...c, group: g })));
-  const ws = workbook.addWorksheet(name, {
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }],
+const addDataSheet = (
+  workbook: Workbook,
+  sheetName: string,
+  title: string,
+  columns: Column[],
+  rows: Value[][],
+  notes: [string, string]
+) => {
+  const ws = workbook.addWorksheet(sheetName, {
+    views: [{ state: 'frozen', xSplit: 1, ySplit: HEADER_ROW, showGridLines: false }],
+    pageSetup: {
+      paperSize: 9, // A4
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${HEADER_ROW}:${HEADER_ROW}`,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.3, footer: 0.3 },
+    },
+    headerFooter: { oddFooter: `&L${title.replace(/&/g, '&&')}&RPage &P of &N` },
   });
-  ws.columns = columns.map(c => ({ width: c.width }));
+  ws.columns = columns.map(c => ({ width: c.width + ARROW_ROOM }));
 
-  // Row 1: one coloured band per group, merged across its columns.
-  let col = 1;
-  groups.forEach(g => {
-    const first = col;
-    const last = col + g.columns.length - 1;
-    if (last > first) ws.mergeCells(1, first, 1, last);
-    for (let c = first; c <= last; c++) {
-      const band = ws.getCell(1, c);
-      band.fill = fill(g.color);
-      band.border = { left: thin('#ffffff'), right: thin('#ffffff') };
-    }
-    const cell = ws.getCell(1, first);
-    cell.value = g.title.toUpperCase();
-    cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-    cell.alignment = { horizontal: 'center', vertical: 'middle' };
-    col = last + 1;
-  });
+  // Row 1: the title. Rows 2–3: what this file holds and when it was made.
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = text(title);
+  titleCell.font = font(MAROON, { size: 16, bold: true });
   ws.getRow(1).height = 24;
+  notes.forEach((note, i) => {
+    const cell = ws.getCell(2 + i, 1);
+    cell.value = text(note);
+    cell.font = font(MUTED, { size: 9 });
+  });
 
-  // Row 2: column headers in a light tint of their group's colour.
-  const header = ws.getRow(2);
+  // The header row: white on maroon, gold rule underneath.
+  const header = ws.getRow(HEADER_ROW);
   columns.forEach((c, i) => {
     const cell = header.getCell(i + 1);
-    cell.value = c.header;
-    cell.fill = fill(tint(c.group.color));
-    cell.font = { bold: true, size: 10, color: { argb: argb(c.group.color) } };
+    cell.value = text(c.header);
+    cell.fill = fill(MAROON);
+    cell.font = font('FFFFFF', { bold: true });
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    cell.border = { ...box(GRID), bottom: { style: 'medium', color: { argb: argb(c.group.color) } } };
+    cell.border = { ...box(SAND), bottom: { style: 'medium', color: { argb: `FF${GOLD}` } } };
   });
   header.height = 32;
 
-  // Data rows.
+  // Data rows: sand borders, every other row cream.
   rows.forEach((values, r) => {
-    const row = ws.getRow(r + 3);
+    const row = ws.getRow(HEADER_ROW + 1 + r);
     values.forEach((value, i) => {
       const c = columns[i];
       const cell = row.getCell(i + 1);
       // Empty means a truly empty cell, so Excel's blanks filter finds it.
-      cell.value = value === undefined || value === '' ? null : value;
-      cell.border = box(GRID);
-      cell.alignment = { vertical: 'middle', horizontal: c.type === 'text' ? 'left' : 'center' };
-      if (r % 2 === 1) cell.fill = fill(ZEBRA);
+      cell.value =
+        value === undefined || value === null || value === '' ? null
+        : typeof value === 'string' ? text(value)
+        : value;
+      cell.font = font(INK, { bold: i === 0 });
+      cell.border = box(SAND);
+      if (r % 2 === 1) cell.fill = fill(CREAM);
 
-      if (c.type === 'money') {
-        cell.numFmt = '#,##0.00';
-        cell.alignment = { vertical: 'middle', horizontal: 'right' };
-      }
-      if (c.type === 'date') cell.numFmt = 'dd/mm/yyyy hh:mm';
-      if (i === 0) cell.font = { bold: true };
-
-      const pill = typeof value === 'string' ? PILLS[c.type]?.[value] : undefined;
-      if (pill) {
-        cell.fill = fill(pill[0]);
-        cell.font = { bold: true, color: { argb: argb(pill[1]) } };
-      }
+      const short = c.type === 'business' || c.type === 'flag' || c.type === 'status' || c.type === 'int';
+      cell.alignment = { vertical: 'middle', horizontal: short || c.type === 'date' ? 'center' : c.type === 'money' ? 'right' : 'left' };
+      if (c.type === 'money') cell.numFmt = '#,##0.00';
+      if (c.type === 'int') cell.numFmt = '0';
+      if (c.type === 'date') cell.numFmt = 'dd-mmm-yyyy hh:mm';
     });
   });
 
-  ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: columns.length } };
+  ws.autoFilter = { from: { row: HEADER_ROW, column: 1 }, to: { row: HEADER_ROW, column: columns.length } };
   return ws;
 };
 
-// What the export covered, so a saved file explains itself.
-const addInfoSheet = (workbook: Workbook, title: string, filters: ExportFilters, count: number) => {
-  const ws = workbook.addWorksheet('Report Info');
-  ws.columns = [{ width: 22 }, { width: 50 }];
-  ws.mergeCells('A1:B1');
-  const head = ws.getCell('A1');
-  head.value = title;
-  head.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-  head.fill = fill(RED);
-  head.alignment = { vertical: 'middle', indent: 1 };
-  ws.getRow(1).height = 28;
-
-  const lines: [string, Value][] = [
-    ['Generated', localDate(new Date())],
-    ['Period', filters.period],
-    ['Insurance line', filters.insuranceLine],
-    ['Search', filters.search || '—'],
-    ['Rows', count],
-    ['Premiums', 'Total payable per quote: net premium + policy fee + VAT'],
-  ];
-  lines.forEach(([label, value], i) => {
-    const row = ws.getRow(i + 3);
-    row.getCell(1).value = label;
-    row.getCell(1).font = { bold: true, color: { argb: argb('#4b5563') } };
-    row.getCell(2).value = value ?? '—';
-    row.getCell(2).alignment = { horizontal: 'left' };
-    if (value instanceof Date) row.getCell(2).numFmt = 'dd/mm/yyyy hh:mm';
+// exceljs's in-memory writer always collects text into a shared-strings table
+// (its useSharedStrings option is only honoured by the streaming writer). Hand
+// it an empty stand-in for that table instead: nothing is added, so each text
+// cell — all rich text, see text() — is written as an inline string. Written
+// against exceljs 4.4.0, which package.json pins.
+const writeInlineStrings = (workbook: Workbook) => {
+  const modelOf = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(workbook), 'model')?.get;
+  if (!modelOf) return;
+  const none = { add: () => undefined, count: 0, xml: '' };
+  Object.defineProperty(workbook, 'model', {
+    configurable: true,
+    get() {
+      const model = modelOf.call(this);
+      Object.defineProperty(model, 'sharedStrings', { get: () => none, set: () => {} });
+      return model;
+    },
   });
 };
 
 const buildWorkbook = async (
   sheetName: string,
-  groups: Group[],
-  rows: Value[][],
   title: string,
-  filters: ExportFilters
+  columns: Column[],
+  rows: Value[][],
+  filters: ExportFilters,
+  noun: string
 ) => {
   const mod = await import('exceljs');
   // The browser build is CommonJS; depending on the bundler's interop the
@@ -372,9 +324,15 @@ const buildWorkbook = async (
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'NSIB General Insurance Quotes';
   workbook.created = new Date();
-  addDataSheet(workbook, sheetName, groups, rows);
-  addInfoSheet(workbook, title, filters, rows.length);
 
+  const notes: [string, string] = [
+    `Period: ${filters.period}  ·  Insurance line: ${filters.insuranceLine}  ·  ` +
+      `Search: ${filters.search ? `"${filters.search}"` : 'none'}  ·  ${rows.length} ${noun}${rows.length === 1 ? '' : 's'}`,
+    `Generated ${stamp(new Date())}  ·  Amounts in AED; premiums include policy fee and 5% VAT (no VAT on GLPA)`,
+  ];
+  addDataSheet(workbook, sheetName, title, columns, rows, notes);
+
+  writeInlineStrings(workbook);
   const buffer = await workbook.xlsx.writeBuffer();
   return new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -383,8 +341,22 @@ const buildWorkbook = async (
 
 // One row per comparison.
 export const buildComparisonsWorkbook = (comparisons: SavedComparison[], filters: ExportFilters) =>
-  buildWorkbook('Comparisons', COMPARISON_GROUPS, comparisons.map(comparisonRow), 'GI Comparisons Report', filters);
+  buildWorkbook(
+    'Comparisons',
+    'NSIB General Insurance - Saved Comparisons',
+    COMPARISON_COLUMNS,
+    comparisons.map(comparisonRow),
+    filters,
+    'comparison'
+  );
 
 // One row per insurer's quote inside those comparisons, for pivot tables.
 export const buildQuotesWorkbook = (comparisons: SavedComparison[], filters: ExportFilters) =>
-  buildWorkbook('Quotes', QUOTE_GROUPS, comparisons.flatMap(quoteRows), 'GI Quotes Report', filters);
+  buildWorkbook(
+    'Quotes',
+    'NSIB General Insurance - Quotes by Plan',
+    QUOTE_COLUMNS,
+    comparisons.flatMap(quoteRows),
+    filters,
+    'quote'
+  );
