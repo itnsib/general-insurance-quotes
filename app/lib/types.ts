@@ -31,6 +31,9 @@ export interface SavedComparison {
   businessActivity?: string;
   location?: string;
   propertyLimit?: string;
+  // GLPA and WC EL only.
+  totalSumInsured?: string;
+  numberOfEmployees?: string;
   // Printed on the document. Set from the linked Zoho enquiry when there is
   // one; older comparisons hold a number typed in by hand and no `enquiry`.
   enquiryNumber?: string;

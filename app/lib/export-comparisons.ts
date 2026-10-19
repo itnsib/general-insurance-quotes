@@ -96,6 +96,8 @@ const COMPARISON_COLUMNS: Column[] = [
   C('Location / Risk Address', 28),
   C('Address', 28),
   C('Property Insured - Limit', 20),
+  C('Total Sum Insured', 18),
+  C('No. of Employees', 12, 'int'),
   C('Quotes', 8, 'int'),
   C('Insurers Quoted', 30),
   C('Quotes Compared', 60),
@@ -128,6 +130,8 @@ const comparisonRow = (c: SavedComparison): Value[] => {
     c.location,
     c.address,
     c.propertyLimit,
+    c.totalSumInsured,
+    amount(c.numberOfEmployees),
     quotes.length,
     unique(quotes.map(q => q.company)),
     quotes

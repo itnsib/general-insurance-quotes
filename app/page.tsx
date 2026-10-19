@@ -301,6 +301,27 @@ const getLineDefaults = (lineValue: string) => {
 };
 
 const isTravelLine = (lineValue: string) => lineValue === 'travel';
+// Lines priced per head, which carry Total Sum Insured and Number of Employees.
+const isEmployeeLine = (lineValue: string) => lineValue === 'glpa' || lineValue === 'wcel';
+
+// "AED 1,000,000", "1000000" or "1 million" -> 1000000. Null when there's no number.
+const parseSumInsured = (value: string) => {
+  const match = value.replace(/,/g, '').match(/(\d+(?:\.\d+)?)\s*(million|mn|m|thousand|k)?\b/i);
+  if (!match) return null;
+  const unit = match[2]?.toLowerCase();
+  const scale = !unit ? 1 : unit === 'thousand' || unit === 'k' ? 1000 : 1000000;
+  return parseFloat(match[1]) * scale;
+};
+
+// Premium from a percentage rate: "5", "5%" or "0.5% of sum insured" on 1000
+// gives 1000 * 5 / 100 = 50. Null when either side isn't a number yet, so a
+// half-filled form leaves the premium alone.
+const premiumFromRate = (sumInsured: string, premiumRate: string) => {
+  const si = parseSumInsured(sumInsured);
+  const rate = premiumRate.replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  if (si === null || !rate) return null;
+  return Math.round(si * parseFloat(rate[0])) / 100;
+};
 
 // The comparison is downloaded as a standalone .html file and opened from disk,
 // so the cover page cannot reference /nsib-cover.png — from a file:// document
@@ -806,7 +827,8 @@ const DOCUMENT_CSS = `
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10mm;
+            flex-wrap: wrap;
+            gap: 2mm 10mm;
             margin-bottom: 4.5mm;
             font-size: 10.5pt;
         }
@@ -1058,6 +1080,10 @@ ${buildDocumentHeader(assets)}
             <span class="divider"></span>
             ${comparison.enquiryNumber ? `<span>Enquiry No: <strong>${escapeHtml(comparison.enquiryNumber)}</strong></span>
             <span class="divider"></span>
+            ` : ''}${comparison.totalSumInsured ? `<span>Total Sum Insured: <strong>${escapeHtml(comparison.totalSumInsured)}</strong></span>
+            <span class="divider"></span>
+            ` : ''}${comparison.numberOfEmployees ? `<span>No. of Employees: <strong>${escapeHtml(comparison.numberOfEmployees)}</strong></span>
+            <span class="divider"></span>
             ` : ''}<span>Date: <strong>${escapeHtml(formatQuoteDate(comparison.date))}</strong></span>
         </div>
 
@@ -1199,6 +1225,8 @@ function QuoteGeneratorPage({
   const [businessActivity, setBusinessActivity] = useState('');
   const [location, setLocation] = useState('');
   const [propertyLimit, setPropertyLimit] = useState('');
+  const [totalSumInsured, setTotalSumInsured] = useState('');
+  const [numberOfEmployees, setNumberOfEmployees] = useState('');
   const [enquiryNumber, setEnquiryNumber] = useState('');
   // The Zoho CRM enquiry this comparison belongs to. When set, its PDF is also
   // filed in that enquiry's WorkDrive folder.
@@ -1327,6 +1355,8 @@ function QuoteGeneratorPage({
     setBusinessActivity(comparison.businessActivity || '');
     setLocation(comparison.location || '');
     setPropertyLimit(comparison.propertyLimit || '');
+    setTotalSumInsured(comparison.totalSumInsured || '');
+    setNumberOfEmployees(comparison.numberOfEmployees || '');
     setEnquiryNumber(comparison.enquiryNumber || '');
     setEnquiry(comparison.enquiry || null);
     setFilingNote(null);
@@ -1426,14 +1456,31 @@ function QuoteGeneratorPage({
     const newQuotes = [...quotes];
     newQuotes[index] = { ...newQuotes[index], [field]: value };
     
-    // Recalculate VAT and total if premium or policy fee changes
-    if (field === 'premium' || field === 'policyFee') {
+    // GLPA / WC EL: the premium follows Total Sum Insured x Premium Rate.
+    if (field === 'premiumRate' && isEmployeeLine(insuranceLine)) {
+      const premium = premiumFromRate(totalSumInsured, value);
+      if (premium !== null) newQuotes[index].premium = premium;
+    }
+
+    // Recalculate VAT and total if premium, rate or policy fee changes
+    if (field === 'premium' || field === 'policyFee' || field === 'premiumRate') {
       const { vat, total } = calculateVAT(newQuotes[index].premium, newQuotes[index].policyFee, insuranceLine);
       newQuotes[index].vat = vat;
       newQuotes[index].total = total;
     }
     
     setQuotes(newQuotes);
+  };
+
+  // A new Total Sum Insured reprices every quote that already has a rate.
+  const updateTotalSumInsured = (value: string) => {
+    setTotalSumInsured(value);
+    setQuotes(quotes.map(quote => {
+      const premium = premiumFromRate(value, quote.premiumRate);
+      if (premium === null) return quote;
+      const { vat, total } = calculateVAT(premium, quote.policyFee, insuranceLine);
+      return { ...quote, premium, vat, total };
+    }));
   };
 
   // The comparison as the form holds it, or null (with the reason shown) when
@@ -1464,6 +1511,7 @@ function QuoteGeneratorPage({
       businessActivity,
       location,
       propertyLimit,
+      ...(isEmployeeLine(insuranceLine) && { totalSumInsured, numberOfEmployees }),
       enquiryNumber: linked ? linked.enquiryNo : enquiryNumber,
       enquiry: linked,
       // Filter out empty lines from conditions and exclusions when saving
@@ -1723,6 +1771,33 @@ function QuoteGeneratorPage({
                     />
                   </div>
                 )}
+
+                {isEmployeeLine(insuranceLine) && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-bold mb-1 text-gray-800">Total Sum Insured</label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                        value={totalSumInsured}
+                        onChange={(e) => updateTotalSumInsured(e.target.value)}
+                        placeholder="Enter total sum insured (e.g., AED 1,000,000)"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold mb-1 text-gray-800">Total Number of Employees</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                        value={numberOfEmployees}
+                        onChange={(e) => setNumberOfEmployees(e.target.value)}
+                        placeholder="Enter number of employees"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1949,8 +2024,13 @@ Press Enter for new line"
                             className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
                             value={quote.premiumRate}
                             onChange={(e) => updateQuote(idx, 'premiumRate', e.target.value)}
-                            placeholder="e.g., 0.5% of sum insured"
+                            placeholder={isEmployeeLine(insuranceLine) ? 'e.g., 5% (premium is calculated)' : 'e.g., 0.5% of sum insured'}
                           />
+                          {isEmployeeLine(insuranceLine) && (
+                            <p className="text-[11px] text-gray-500 mt-1">
+                              Premium = Total Sum Insured × Premium Rate ÷ 100
+                            </p>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
