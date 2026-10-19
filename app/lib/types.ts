@@ -7,6 +7,9 @@ export interface Quote {
   exclusions: string[];
   deductible: string;
   premiumRate: string;
+  // GLPA / WC EL: whether the rate is per cent (÷ 100) or per mille (÷ 1000).
+  // Missing on older quotes, which were all per cent.
+  rateBasis?: 100 | 1000;
   premium: number;
   policyFee: number;
   vat: number;

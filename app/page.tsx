@@ -7,6 +7,7 @@ import EnquiryPicker from './components/EnquiryPicker';
 import { workDriveNote } from './lib/zoho-client';
 import { buildComparisonsWorkbook, buildQuotesWorkbook, localDay } from './lib/export-comparisons';
 import { saveBlobAs } from './lib/save-file';
+import { displayRate } from './lib/rate';
 
 // ============ CONSTANTS ============
 const INSURANCE_LINES = [
@@ -313,14 +314,14 @@ const parseSumInsured = (value: string) => {
   return parseFloat(match[1]) * scale;
 };
 
-// Premium from a percentage rate: "5", "5%" or "0.5% of sum insured" on 1000
-// gives 1000 * 5 / 100 = 50. Null when either side isn't a number yet, so a
-// half-filled form leaves the premium alone.
-const premiumFromRate = (sumInsured: string, premiumRate: string) => {
+// Premium from a rate per cent (basis 100) or per mille (basis 1000): "5" or
+// "5%" on 1000 gives 1000 * 5 / 100 = 50; "5" per mille gives 5. Null when
+// either side isn't a number yet, so a half-filled form leaves the premium alone.
+const premiumFromRate = (sumInsured: string, premiumRate: string, basis: 100 | 1000 = 100) => {
   const si = parseSumInsured(sumInsured);
   const rate = premiumRate.replace(/,/g, '').match(/\d+(?:\.\d+)?/);
   if (si === null || !rate) return null;
-  return Math.round(si * parseFloat(rate[0])) / 100;
+  return Math.round((si * parseFloat(rate[0]) * 100) / basis) / 100;
 };
 
 // The comparison is downloaded as a standalone .html file and opened from disk,
@@ -593,7 +594,7 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
   }
 
   rows.push(
-    { label: 'Premium Rate', values: comparison.quotes.map(q => text(q.premiumRate)) },
+    { label: 'Premium Rate', values: comparison.quotes.map(q => text(displayRate(q))) },
     { label: 'Premium (AED)', isMoney: true, values: comparison.quotes.map(q => text(q.premium)) },
     { label: 'Policy Fee (AED)', isMoney: true, values: comparison.quotes.map(q => text(q.policyFee)) }
   );
@@ -1433,6 +1434,7 @@ function QuoteGeneratorPage({
       exclusions: [...defaults.exclusions],
       deductible: defaults.deductible || '',
       premiumRate: '',
+      ...(isEmployeeLine(insuranceLine) && { rateBasis: 100 as const }),
       premium: 0,
       policyFee: 0,
       vat: vat,
@@ -1457,13 +1459,14 @@ function QuoteGeneratorPage({
     newQuotes[index] = { ...newQuotes[index], [field]: value };
     
     // GLPA / WC EL: the premium follows Total Sum Insured x Premium Rate.
-    if (field === 'premiumRate' && isEmployeeLine(insuranceLine)) {
-      const premium = premiumFromRate(totalSumInsured, value);
+    if ((field === 'premiumRate' || field === 'rateBasis') && isEmployeeLine(insuranceLine)) {
+      const { premiumRate, rateBasis } = newQuotes[index];
+      const premium = premiumFromRate(totalSumInsured, premiumRate, rateBasis);
       if (premium !== null) newQuotes[index].premium = premium;
     }
 
     // Recalculate VAT and total if premium, rate or policy fee changes
-    if (field === 'premium' || field === 'policyFee' || field === 'premiumRate') {
+    if (field === 'premium' || field === 'policyFee' || field === 'premiumRate' || field === 'rateBasis') {
       const { vat, total } = calculateVAT(newQuotes[index].premium, newQuotes[index].policyFee, insuranceLine);
       newQuotes[index].vat = vat;
       newQuotes[index].total = total;
@@ -1476,7 +1479,7 @@ function QuoteGeneratorPage({
   const updateTotalSumInsured = (value: string) => {
     setTotalSumInsured(value);
     setQuotes(quotes.map(quote => {
-      const premium = premiumFromRate(value, quote.premiumRate);
+      const premium = premiumFromRate(value, quote.premiumRate, quote.rateBasis);
       if (premium === null) return quote;
       const { vat, total } = calculateVAT(premium, quote.policyFee, insuranceLine);
       return { ...quote, premium, vat, total };
@@ -2024,12 +2027,25 @@ Press Enter for new line"
                             className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
                             value={quote.premiumRate}
                             onChange={(e) => updateQuote(idx, 'premiumRate', e.target.value)}
-                            placeholder={isEmployeeLine(insuranceLine) ? 'e.g., 5% (premium is calculated)' : 'e.g., 0.5% of sum insured'}
+                            placeholder={isEmployeeLine(insuranceLine) ? 'e.g., 5 (premium is calculated)' : 'e.g., 0.5% of sum insured'}
                           />
                           {isEmployeeLine(insuranceLine) && (
-                            <p className="text-[11px] text-gray-500 mt-1">
-                              Premium = Total Sum Insured × Premium Rate ÷ 100
-                            </p>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-700">
+                              {([100, 1000] as const).map(basis => (
+                                <label key={basis} className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`rate-basis-${quote.id}`}
+                                    checked={(quote.rateBasis ?? 100) === basis}
+                                    onChange={() => updateQuote(idx, 'rateBasis', basis)}
+                                  />
+                                  <span className="font-semibold">{basis === 100 ? '% (÷ 100)' : '‰ (÷ 1000)'}</span>
+                                </label>
+                              ))}
+                              <span className="text-gray-500">
+                                Premium = Total Sum Insured × Rate ÷ {quote.rateBasis ?? 100}
+                              </span>
+                            </div>
                           )}
                         </div>
 

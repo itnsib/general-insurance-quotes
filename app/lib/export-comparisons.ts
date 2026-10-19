@@ -12,6 +12,7 @@
 
 import type { Borders, Fill, Font, Workbook } from 'exceljs';
 import type { Quote, SavedComparison } from './types';
+import { displayRate } from './rate';
 
 // What the on-screen filters were, for the notes under the title.
 export interface ExportFilters {
@@ -183,7 +184,7 @@ const quoteRows = (c: SavedComparison): Value[][] => {
     q.company,
     q.isRecommended ? 'Recommended' : null,
     q.deductible,
-    q.premiumRate,
+    displayRate(q),
     q.geographicalLimits,
     // A quote never filled in has nothing to report, not a premium of 0.
     totals[i] === null ? null : amount(q.premium),
