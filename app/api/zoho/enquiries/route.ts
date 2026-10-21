@@ -27,17 +27,30 @@ const clean = (s: string | null) =>
 
 const ENQUIRY_NO = /^(?:enq\s*)?(\d{3,})$/i;
 
+// LLC, L.L.C, FZE, FZ-LLC, LTD, ... — with or without dots and dashes.
+const COMPANY_SUFFIX = /^(?:l\.?l\.?c|f\.?z\.?e|fzco|fz-?llc|ltd|plc|inc|co|est|spc|opc)\.?$/i;
+
 function whereClause(q: string) {
   const enq = q.match(ENQUIRY_NO);
   if (enq) return `Enquiry_No1 like '%${enq[1]}%'`;
 
   // Each word must START a word of the name: a plain substring match let "umar"
-  // pull in every "Kumar". Three words is plenty to narrow and keeps the query
-  // within COQL's limit on conditions.
-  const words = q.split(' ').filter((w) => w.length >= 2).slice(0, 3);
+  // pull in every "Kumar". A word may also follow "(" — CRM names are written
+  // "SHEEBA INTERIORS (L.L.C)". Three words is plenty to narrow and keeps the
+  // query within COQL's limit on conditions.
+  //
+  // Company suffixes are dropped: CRM spells the same one "L.L.C", "(L.L.C)",
+  // "(L.L.C", "L L C" and "LLC", so typing it ruled out the enquiry sought
+  // while hardly narrowing the search. Kept only if nothing else was typed.
+  const typed = q.split(' ').filter((w) => w.length >= 2);
+  const named = typed.filter((w) => !COMPANY_SUFFIX.test(w));
+  const words = (named.length ? named : typed).slice(0, 3);
   if (!words.length) return '';
   const all = (field: string) =>
-    nest(words.map((w) => `(${field} like '${w}%' or ${field} like '% ${w}%')`), 'and');
+    nest(
+      words.map((w) => nest([`${field} like '${w}%'`, `${field} like '% ${w}%'`, `${field} like '%(${w}%'`], 'or')),
+      'and'
+    );
   return `(${all('Contact_Name.Full_Name')} or ${all('Deal_Name')})`;
 }
 
