@@ -96,9 +96,9 @@ const COMPARISON_COLUMNS: Column[] = [
   C('Business Activity', 24),
   C('Location / Risk Address', 28),
   C('Address', 28),
-  C('Property Insured - Limit', 20),
-  C('Total Sum Insured', 18),
+  C('Sum Insured', 18),
   C('No. of Employees', 12, 'int'),
+  C('Policy Period', 24),
   C('Quotes', 8, 'int'),
   C('Insurers Quoted', 30),
   C('Quotes Compared', 60),
@@ -107,8 +107,14 @@ const COMPARISON_COLUMNS: Column[] = [
   C('Spread (AED)', 13, 'money'),
   C('Recommended Insurer', 28),
   C('Recommended Premium (AED)', 16, 'money'),
+  C('Remarks', 40),
   C('Created Date', 17, 'date'),
 ];
+
+// yyyy-mm-dd pairs from the form, as dd/mm/yyyy – dd/mm/yyyy.
+const dmy = (iso?: string) => iso?.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1') || '';
+const policyPeriod = (c: SavedComparison) =>
+  c.policyFrom || c.policyTo ? `${dmy(c.policyFrom) || '—'} – ${dmy(c.policyTo) || '—'}` : null;
 
 const comparisonRow = (c: SavedComparison): Value[] => {
   const quotes = Array.isArray(c.quotes) ? c.quotes : [];
@@ -130,9 +136,10 @@ const comparisonRow = (c: SavedComparison): Value[] => {
     c.businessActivity,
     c.location,
     c.address,
-    c.propertyLimit,
-    c.totalSumInsured,
+    // Older PAR / SME records hold their limit in propertyLimit instead.
+    c.totalSumInsured || c.propertyLimit,
     amount(c.numberOfEmployees),
+    policyPeriod(c),
     quotes.length,
     unique(quotes.map(q => q.company)),
     quotes
@@ -143,6 +150,7 @@ const comparisonRow = (c: SavedComparison): Value[] => {
     low !== null && high !== null ? amount(high - low) : null,
     recommended < 0 ? null : quotes[recommended].company,
     recommended < 0 ? null : totals[recommended],
+    c.remarks,
     toDate(c.date),
   ];
 };
@@ -163,6 +171,7 @@ const QUOTE_COLUMNS: Column[] = [
   C('Policy Fee (AED)', 13, 'money'),
   C('VAT (AED)', 12, 'money'),
   C('Total Premium (AED)', 15, 'money'),
+  C('Quote Validity', 14),
   C('Cheapest in Comparison', 13, 'flag'),
   C('Created Date', 17, 'date'),
 ];
@@ -191,6 +200,7 @@ const quoteRows = (c: SavedComparison): Value[][] => {
     totals[i] === null ? null : amount(q.policyFee),
     totals[i] === null ? null : amount(q.vat),
     totals[i],
+    dmy(q.quoteValidity) || null,
     totals[i] !== null && totals[i] === low ? 'Yes' : 'No',
     toDate(c.date),
   ]);

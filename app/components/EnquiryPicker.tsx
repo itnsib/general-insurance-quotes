@@ -109,7 +109,7 @@ export default function EnquiryPicker({
     <div>
       <input
         type="text"
-        className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+        className="w-full px-2 py-1.5 text-sm border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
         value={typed ? query : defaultQuery}
         onChange={(e) => {
           setTyped(true);
@@ -124,7 +124,7 @@ export default function EnquiryPicker({
           : error
             ? <span className="text-red-700">{error}</span>
             : effectiveQuery.length < 3
-              ? 'Enter the customer name, or type here, to find the Zoho enquiry.'
+              ? 'Searches with the client name — or type an enquiry number here.'
               : results.length
                 ? `${results.length} enquir${results.length === 1 ? 'y' : 'ies'} found — pick the right one.`
                 : 'No matching enquiries in Zoho.'}
@@ -137,7 +137,7 @@ export default function EnquiryPicker({
               setQuery('');
             }}
           >
-            use customer name
+            use client name
           </button>
         )}
       </div>

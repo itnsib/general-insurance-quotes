@@ -10,6 +10,34 @@ import { saveBlobAs } from './lib/save-file';
 import { displayRate } from './lib/rate';
 
 // ============ CONSTANTS ============
+// Lines added 2026-10-21 with no standard wording yet: each quote opens with
+// only Geographical Limits filled in, for the advisor to complete.
+// A label is what a saved record stores (and how it is found again for
+// editing), so these must not be renamed once comparisons exist under them.
+const BLANK_LINE_COMPANIES = ['AWNIC', 'ADNTC', 'ARABIA'];
+const BLANK_LINES = [
+  { value: 'ear', label: 'Erection All Risk - Single' },
+  { value: 'eei', label: 'Electronic Equipment Insurance' },
+  { value: 'mb', label: 'Machinery Breakdown' },
+  { value: 'bi', label: 'Business Interruption' },
+  { value: 'marine-cargo', label: 'Marine Cargo' },
+  { value: 'marine-hull', label: 'Marine Hull Insurance' },
+  { value: 'home', label: 'Home Insurance' },
+  { value: 'hotel', label: 'Hotel Comprehensive' },
+  { value: 'mgit', label: 'Marine Goods in Transit - Annual' },
+  { value: 'jewellers-block', label: 'Jewelers Block Insurance' },
+  { value: 'airside', label: 'Airside Liability' },
+  { value: 'med-mal', label: 'Medical Malpractice' },
+  { value: 'el', label: 'Employers Liability' },
+  { value: 'tour-operators', label: 'Tour Operators Liability' },
+  { value: 'money', label: 'Money Insurance' },
+  { value: 'fidelity', label: 'Fidelity Guarantee' },
+  { value: 'ffl', label: 'Freight Forwarders Liability Insurance' },
+  { value: 'cgl', label: 'Commercial General Liability' },
+  { value: 'fire', label: 'Fire & Lightning Insurance' },
+  { value: 'ship-repairs', label: 'Ship Repairs Legal Liability' }
+];
+
 const INSURANCE_LINES = [
   { value: 'sme', label: 'SME PACKAGE (PAR + TPL + WC EL)' },
   { value: 'par', label: 'PAR - Property All Risk Insurance' },
@@ -18,7 +46,9 @@ const INSURANCE_LINES = [
   { value: 'car', label: 'CAR - Contractor\'s All Risk' },
   { value: 'cpm', label: 'CPM - Contractor\'s Plant and Machinery Insurance' },
   { value: 'glpa', label: 'GLPA - Group Life and Personal Accident Insurance' },
-  { value: 'travel', label: 'TRAVEL - Travel Insurance' }
+  { value: 'travel', label: 'TRAVEL - Travel Insurance' },
+  { value: 'pi', label: 'PI - Professional Indemnity Insurance' },
+  ...BLANK_LINES.map(({ value, label }) => ({ value, label }))
 ];
 
 // Travel is quoted as four separate columns: three Qatar plans plus Orient.
@@ -241,7 +271,41 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
       "Losses not reported to local authorities within 24 hours (baggage and money claims)"
     ],
     "deductible": "As per policy schedule"
-  }
+  },
+  "pi": {
+    "companies": ["AWNIC", "ADNTC"],
+    // Wording to follow — left blank so advisors fill it per quote until then.
+    "scopeOfCover": "",
+    "geographicalLimits": "United Arab Emirates",
+    "conditions": [
+      "Loss of Documents",
+      "Dishonesty of Employees",
+      "Libel and Slander",
+      "Retroactive Clause -",
+      "Cover is only in respect of the service rendered by insured UAE entity.",
+      "Warranted no known or reported losses/ claims, nor circumstances that might lead to loss/claim and no material changes till date of binding"
+    ],
+    "exclusions": [
+      "War & Civil War",
+      "War and Terrorism Exclusion",
+      "Total Asbestos Exclusion",
+      "Excluding Any Cover for Loss Or Damage To Data",
+      "Excluding Directors & Officers Liability",
+      "Political Risks Exclusion Endorsement",
+      "Excluding offshore / Marine activities / Wet Works / Breakwater",
+      "Excluding Marine & Hull Liability / GIT / Freight Forwarders Liability",
+      "Aviation / Airside Liability / Aerial Liability / Drones"
+    ],
+    "deductible": "AED 40,000/- each and every claim"
+  },
+  ...Object.fromEntries(BLANK_LINES.map(({ value }) => [value, {
+    "companies": BLANK_LINE_COMPANIES,
+    "scopeOfCover": "",
+    "geographicalLimits": "United Arab Emirates",
+    "conditions": [],
+    "exclusions": [],
+    "deductible": ""
+  }]))
 };
 
 // ============ UTILITY FUNCTIONS ============
@@ -302,8 +366,11 @@ const getLineDefaults = (lineValue: string) => {
 };
 
 const isTravelLine = (lineValue: string) => lineValue === 'travel';
-// Lines priced per head, which carry Total Sum Insured and Number of Employees.
+// Lines priced per head, which carry Number of Employees.
 const isEmployeeLine = (lineValue: string) => lineValue === 'glpa' || lineValue === 'wcel';
+// Every line carries a Sum Insured; on these the premium is also calculated
+// from it and the rate. PI is rated on its limit of indemnity, with no headcount.
+const isRatedOnSumInsured = (lineValue: string) => isEmployeeLine(lineValue) || lineValue === 'pi';
 
 // "AED 1,000,000", "1000000" or "1 million" -> 1000000. Null when there's no number.
 const parseSumInsured = (value: string) => {
@@ -609,6 +676,8 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
     values: comparison.quotes.map(q => `AED ${q.total}`)
   });
 
+  rows.push({ label: 'Quote Validity', values: comparison.quotes.map(q => formatIsoDay(q.quoteValidity)) });
+
   let sno = 0;
   return rows.map(row => {
     // Section bands (e.g. "C. Personal Accident") span the full width and
@@ -836,6 +905,20 @@ const DOCUMENT_CSS = `
         .quote-meta strong { color: var(--maroon); font-weight: 700; }
         .quote-meta .divider { width: 1px; height: 14px; background: var(--gold); }
 
+        /* ---------- Client details ---------- */
+        .client-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5mm 8mm;
+            margin: -1.5mm 0 4.5mm;
+            padding: 7px 12px;
+            background: var(--ivory);
+            border: 1px solid var(--gold-light);
+            font-size: 9.5pt;
+        }
+        .client-details .cd-label { color: var(--ink); }
+        .client-details strong { color: var(--maroon); font-weight: 700; }
+
         /* ---------- Comparison table ---------- */
         .cmp-table {
             width: 100%;
@@ -932,6 +1015,16 @@ const DOCUMENT_CSS = `
         }
         .advisor-note h4 { margin: 0 0 4px; font-size: 9.5pt; color: var(--maroon); letter-spacing: 0.3px; text-transform: uppercase; }
         .advisor-note p { margin: 0; line-height: 1.5; }
+
+        .disclaimer {
+            margin: 4mm 0 0;
+            font-size: 8pt;
+            font-style: italic;
+            line-height: 1.45;
+            color: #5A4A40;
+            page-break-inside: avoid;
+        }
+        .disclaimer strong { font-style: normal; color: var(--maroon); }
 
         /* ---------- Footer ---------- */
         .doc-footer {
@@ -1040,6 +1133,56 @@ const formatQuoteDate = (value: string) => {
   return isNaN(parsed.getTime()) ? value.substring(0, 10) : parsed.toLocaleDateString('en-GB');
 };
 
+// A date picker's yyyy-mm-dd as dd/mm/yyyy. Split by hand rather than parsed,
+// which would read it as UTC midnight and could print the previous day.
+const formatIsoDay = (value?: string) => {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value || '';
+};
+
+const formatPolicyPeriod = (from?: string, to?: string) => {
+  if (!from && !to) return '';
+  return `${formatIsoDay(from) || '—'} – ${formatIsoDay(to) || '—'}`;
+};
+
+// yyyy-mm-dd + 1 year − 1 day, e.g. 2026-11-01 → 2027-10-31. Worked in UTC so
+// the local timezone can't shift the day. '' for an empty or invalid start.
+const oneYearPolicyEnd = (from: string) => {
+  const match = from.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  const end = new Date(Date.UTC(+match[1] + 1, +match[2] - 1, +match[3] - 1));
+  return end.toISOString().slice(0, 10);
+};
+
+// The date pickers show the browser's own format (often mm/dd/yyyy), so the
+// period is repeated underneath unambiguously, with its length.
+const policyPeriodHint = (from: string, to: string) => {
+  const day = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  if (!from || !to) return `${from ? day(from) : '…'} – ${to ? day(to) : '…'}`;
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+  if (days < 1) return '⚠️ The end date is before the start date.';
+  const length = to === oneYearPolicyEnd(from) ? '1 year' : `${days} days`;
+  return `${day(from)} – ${day(to)} · ${length}`;
+};
+
+// Printed on every comparison, whatever the line.
+const COMPARISON_DISCLAIMER = "This comparison is based on the quotations received and is subject to the insurers' final terms, conditions, and policy wordings. Coverage differences should be reviewed before making a final decision.";
+
+const buildClientDetails = (comparison: SavedComparison) => {
+  const details: [string, string | undefined][] = [
+    ['Client Name', comparison.customerName],
+    ['Policy Period', formatPolicyPeriod(comparison.policyFrom, comparison.policyTo)],
+    ['Sum Insured', comparison.totalSumInsured || comparison.propertyLimit],
+    ['No. of Employees', comparison.numberOfEmployees]
+  ];
+  const cells = details
+    .filter(([, value]) => value && value.trim())
+    .map(([label, value]) => `<div><span class="cd-label">${label}:</span> <strong>${escapeHtml(value!)}</strong></div>`)
+    .join('');
+  return cells ? `<div class="client-details">${cells}</div>` : '';
+};
+
 const buildComparisonDocument = (comparison: SavedComparison, assets: DocumentAssets) => {
   const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
   const isTravel = comparison.insuranceLine.includes('TRAVEL');
@@ -1081,12 +1224,10 @@ ${buildDocumentHeader(assets)}
             <span class="divider"></span>
             ${comparison.enquiryNumber ? `<span>Enquiry No: <strong>${escapeHtml(comparison.enquiryNumber)}</strong></span>
             <span class="divider"></span>
-            ` : ''}${comparison.totalSumInsured ? `<span>Total Sum Insured: <strong>${escapeHtml(comparison.totalSumInsured)}</strong></span>
-            <span class="divider"></span>
-            ` : ''}${comparison.numberOfEmployees ? `<span>No. of Employees: <strong>${escapeHtml(comparison.numberOfEmployees)}</strong></span>
-            <span class="divider"></span>
             ` : ''}<span>Date: <strong>${escapeHtml(formatQuoteDate(comparison.date))}</strong></span>
         </div>
+
+        ${buildClientDetails(comparison)}
 
         <table class="cmp-table">
             <colgroup>
@@ -1109,11 +1250,19 @@ ${buildDocumentHeader(assets)}
             <tbody>${tableBody}</tbody>
         </table>
 
-        ${comparison.advisorComment ? `
+        ${comparison.remarks?.trim() ? `
+        <div class="advisor-note">
+            <h4>Remarks</h4>
+            <p>${escapeHtml(comparison.remarks).replace(/\n/g, '<br>')}</p>
+        </div>` : ''}
+
+        ${comparison.advisorComment?.trim() ? `
         <div class="advisor-note">
             <h4>Advisor Comment</h4>
             <p>${escapeHtml(comparison.advisorComment).replace(/\n/g, '<br>')}</p>
         </div>` : ''}
+
+        <p class="disclaimer"><strong>Note:</strong> ${escapeHtml(COMPARISON_DISCLAIMER)}</p>
 
 ${DOCUMENT_FOOTER}
     </section>
@@ -1210,6 +1359,10 @@ const saveComparisonToWorkDrive = async (comparison: SavedComparison): Promise<W
   }
 };
 
+// Compact field styling for the Client & Policy Details block.
+const DETAIL_LABEL = 'block text-xs font-bold mb-0.5 text-gray-800';
+const DETAIL_INPUT = 'w-full px-2 py-1.5 text-sm border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none';
+
 // ============ QUOTE GENERATOR PAGE ============
 function QuoteGeneratorPage({ 
   onSaveComplete, 
@@ -1225,9 +1378,11 @@ function QuoteGeneratorPage({
   const [address, setAddress] = useState('');
   const [businessActivity, setBusinessActivity] = useState('');
   const [location, setLocation] = useState('');
-  const [propertyLimit, setPropertyLimit] = useState('');
   const [totalSumInsured, setTotalSumInsured] = useState('');
   const [numberOfEmployees, setNumberOfEmployees] = useState('');
+  const [policyFrom, setPolicyFrom] = useState('');
+  const [policyTo, setPolicyTo] = useState('');
+  const [remarks, setRemarks] = useState('');
   const [enquiryNumber, setEnquiryNumber] = useState('');
   // The Zoho CRM enquiry this comparison belongs to. When set, its PDF is also
   // filed in that enquiry's WorkDrive folder.
@@ -1355,9 +1510,13 @@ function QuoteGeneratorPage({
     setAddress(comparison.address || '');
     setBusinessActivity(comparison.businessActivity || '');
     setLocation(comparison.location || '');
-    setPropertyLimit(comparison.propertyLimit || '');
-    setTotalSumInsured(comparison.totalSumInsured || '');
+    // A PAR / SME record from before Sum Insured replaced "Property Insured -
+    // Limit" carries its limit over, so saving it again doesn't drop it.
+    setTotalSumInsured(comparison.totalSumInsured || comparison.propertyLimit || '');
     setNumberOfEmployees(comparison.numberOfEmployees || '');
+    setPolicyFrom(comparison.policyFrom || '');
+    setPolicyTo(comparison.policyTo || '');
+    setRemarks(comparison.remarks || '');
     setEnquiryNumber(comparison.enquiryNumber || '');
     setEnquiry(comparison.enquiry || null);
     setFilingNote(null);
@@ -1434,7 +1593,7 @@ function QuoteGeneratorPage({
       exclusions: [...defaults.exclusions],
       deductible: defaults.deductible || '',
       premiumRate: '',
-      ...(isEmployeeLine(insuranceLine) && { rateBasis: 100 as const }),
+      ...(isRatedOnSumInsured(insuranceLine) && { rateBasis: 100 as const }),
       premium: 0,
       policyFee: 0,
       vat: vat,
@@ -1458,8 +1617,8 @@ function QuoteGeneratorPage({
     const newQuotes = [...quotes];
     newQuotes[index] = { ...newQuotes[index], [field]: value };
     
-    // GLPA / WC EL: the premium follows Total Sum Insured x Premium Rate.
-    if ((field === 'premiumRate' || field === 'rateBasis') && isEmployeeLine(insuranceLine)) {
+    // GLPA / WC EL / PI: the premium follows Sum Insured x Premium Rate.
+    if ((field === 'premiumRate' || field === 'rateBasis') && isRatedOnSumInsured(insuranceLine)) {
       const { premiumRate, rateBasis } = newQuotes[index];
       const premium = premiumFromRate(totalSumInsured, premiumRate, rateBasis);
       if (premium !== null) newQuotes[index].premium = premium;
@@ -1475,9 +1634,18 @@ function QuoteGeneratorPage({
     setQuotes(newQuotes);
   };
 
-  // A new Total Sum Insured reprices every quote that already has a rate.
+  // Most policies run a year, so picking a start date fills the end date with
+  // start + 1 year − 1 day — unless an end date was already chosen by hand.
+  const updatePolicyFrom = (value: string) => {
+    if (!policyTo || policyTo === oneYearPolicyEnd(policyFrom)) setPolicyTo(oneYearPolicyEnd(value));
+    setPolicyFrom(value);
+  };
+
+  // A new Sum Insured reprices every quote that already has a rate — on the
+  // rated lines only. Elsewhere the premium is typed in and must not move.
   const updateTotalSumInsured = (value: string) => {
     setTotalSumInsured(value);
+    if (!isRatedOnSumInsured(insuranceLine)) return;
     setQuotes(quotes.map(quote => {
       const premium = premiumFromRate(value, quote.premiumRate, quote.rateBasis);
       if (premium === null) return quote;
@@ -1513,8 +1681,11 @@ function QuoteGeneratorPage({
       address,
       businessActivity,
       location,
-      propertyLimit,
-      ...(isEmployeeLine(insuranceLine) && { totalSumInsured, numberOfEmployees }),
+      totalSumInsured,
+      ...(isEmployeeLine(insuranceLine) && { numberOfEmployees }),
+      policyFrom,
+      policyTo,
+      remarks,
       enquiryNumber: linked ? linked.enquiryNo : enquiryNumber,
       enquiry: linked,
       // Filter out empty lines from conditions and exclusions when saving
@@ -1638,7 +1809,11 @@ function QuoteGeneratorPage({
     setAddress('');
     setBusinessActivity('');
     setLocation('');
-    setPropertyLimit('');
+    setTotalSumInsured('');
+    setNumberOfEmployees('');
+    setPolicyFrom('');
+    setPolicyTo('');
+    setRemarks('');
     setEnquiryNumber('');
     setEnquiry(null);
     setFilingNote(null);
@@ -1696,57 +1871,31 @@ function QuoteGeneratorPage({
 
         {insuranceLine && (
           <>
-            {/* Customer Details */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="text-lg font-bold mb-3 text-gray-800">Customer Details</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Customer Name *</label>
+            {/* Client & Policy Details — four columns on a wide screen, so the
+                whole block fits in a few rows instead of a long half-width list */}
+            <div className="mb-6 px-4 py-3 bg-gray-50 rounded-lg">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                <h3 className="text-base font-bold text-gray-800">Client &amp; Policy Details</h3>
+                {/* Not editable: a new comparison is stamped when it is first
+                    saved, and keeps that date through later edits. */}
+                <span className="text-xs text-gray-600 bg-white border border-gray-200 rounded-full px-3 py-0.5">
+                  📅 Date: <strong>{editingComparison ? formatQuoteDate(editingComparison.date) : new Date().toLocaleDateString('en-GB')}</strong>                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2 mb-2">
+                <div className="lg:col-span-2">
+                  <label className={DETAIL_LABEL}>Client Name <span className="text-red-600">*</span></label>
                   <input
                     type="text"
-                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                    className={DETAIL_INPUT}
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Enter customer name"
+                    placeholder="e.g., ABC Trading LLC"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Address</label>
-                  <input
-                    type="text"
-                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Enter address"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Business Activity</label>
-                  <input
-                    type="text"
-                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                    value={businessActivity}
-                    onChange={(e) => setBusinessActivity(e.target.value)}
-                    placeholder="Enter business activity"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Location / Premises (Risk Address)</label>
-                  <input
-                    type="text"
-                    className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Enter location"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-bold mb-1 text-gray-800">Zoho Enquiry</label>
+                <div className="sm:col-span-2">
+                  <label className={DETAIL_LABEL}>Zoho Enquiry</label>
                   {/* Older comparisons hold a hand-typed number and no link; it
                       seeds the search so linking them is one click. */}
                   <EnquiryPicker
@@ -1762,46 +1911,97 @@ function QuoteGeneratorPage({
                   )}
                 </div>
 
-                {(insuranceLine === 'par' || insuranceLine === 'sme') && (
+                <div>
+                  <label className={DETAIL_LABEL}>Business Activity</label>
+                  <input
+                    type="text"
+                    className={DETAIL_INPUT}
+                    value={businessActivity}
+                    onChange={(e) => setBusinessActivity(e.target.value)}
+                    placeholder="e.g., General trading"
+                  />
+                </div>
+
+                <div>
+                  <label className={DETAIL_LABEL}>Address</label>
+                  <input
+                    type="text"
+                    className={DETAIL_INPUT}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Client's office address"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className={DETAIL_LABEL}>Location / Premises (Risk Address)</label>
+                  <input
+                    type="text"
+                    className={DETAIL_INPUT}
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Where the insured risk is located"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-2">
+                <div>
+                  <label className={DETAIL_LABEL}>Policy Start Date</label>
+                  <input
+                    type="date"
+                    className={DETAIL_INPUT}
+                    value={policyFrom}
+                    onChange={(e) => updatePolicyFrom(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className={DETAIL_LABEL}>Policy End Date</label>
+                  <input
+                    type="date"
+                    className={DETAIL_INPUT}
+                    value={policyTo}
+                    min={policyFrom || undefined}
+                    onChange={(e) => setPolicyTo(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className={DETAIL_LABEL}>Sum Insured</label>
+                  <input
+                    type="text"
+                    className={DETAIL_INPUT}
+                    value={totalSumInsured}
+                    onChange={(e) => updateTotalSumInsured(e.target.value)}
+                    placeholder="e.g., AED 1,000,000"
+                  />
+                </div>
+
+                {isEmployeeLine(insuranceLine) && (
                   <div>
-                    <label className="block text-sm font-bold mb-1 text-gray-800">Property Insured - Limit</label>
+                    <label className={DETAIL_LABEL}>Total Number of Employees</label>
                     <input
-                      type="text"
-                      className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                      value={propertyLimit}
-                      onChange={(e) => setPropertyLimit(e.target.value)}
-                      placeholder="Enter property limit (e.g., AED 1,000,000)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      className={DETAIL_INPUT}
+                      value={numberOfEmployees}
+                      onChange={(e) => setNumberOfEmployees(e.target.value)}
+                      placeholder="e.g., 25"
                     />
                   </div>
                 )}
-
-                {isEmployeeLine(insuranceLine) && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-bold mb-1 text-gray-800">Total Sum Insured</label>
-                      <input
-                        type="text"
-                        className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                        value={totalSumInsured}
-                        onChange={(e) => updateTotalSumInsured(e.target.value)}
-                        placeholder="Enter total sum insured (e.g., AED 1,000,000)"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold mb-1 text-gray-800">Total Number of Employees</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="w-full p-2 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
-                        value={numberOfEmployees}
-                        onChange={(e) => setNumberOfEmployees(e.target.value)}
-                        placeholder="Enter number of employees"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
+
+              {/* One line of hints under the row rather than one per field. */}
+              {((policyFrom || policyTo) || isRatedOnSumInsured(insuranceLine)) && (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  {(policyFrom || policyTo) && <span className="text-gray-700">{policyPeriodHint(policyFrom, policyTo)}</span>}
+                  {(policyFrom || policyTo) && isRatedOnSumInsured(insuranceLine) && ' · '}
+                  {isRatedOnSumInsured(insuranceLine) && 'Premiums below are calculated from the Sum Insured and each insurer’s rate.'}
+                </p>
+              )}
             </div>
 
             {/* Company Selection */}
@@ -2027,9 +2227,9 @@ Press Enter for new line"
                             className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
                             value={quote.premiumRate}
                             onChange={(e) => updateQuote(idx, 'premiumRate', e.target.value)}
-                            placeholder={isEmployeeLine(insuranceLine) ? 'e.g., 5 (premium is calculated)' : 'e.g., 0.5% of sum insured'}
+                            placeholder={isRatedOnSumInsured(insuranceLine) ? 'e.g., 5 (premium is calculated)' : 'e.g., 0.5% of sum insured'}
                           />
-                          {isEmployeeLine(insuranceLine) && (
+                          {isRatedOnSumInsured(insuranceLine) && (
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-700">
                               {([100, 1000] as const).map(basis => (
                                 <label key={basis} className="flex items-center gap-1 cursor-pointer">
@@ -2043,7 +2243,7 @@ Press Enter for new line"
                                 </label>
                               ))}
                               <span className="text-gray-500">
-                                Premium = Total Sum Insured × Rate ÷ {quote.rateBasis ?? 100}
+                                Premium = Sum Insured × Rate ÷ {quote.rateBasis ?? 100}
                               </span>
                             </div>
                           )}
@@ -2099,6 +2299,16 @@ Press Enter for new line"
                             </>
                           )}
                         </div>
+
+                        <div>
+                          <label className="block text-xs font-bold mb-1 text-gray-800">Quote Validity</label>
+                          <input
+                            type="date"
+                            className="w-full p-2 border-2 border-gray-300 rounded text-xs text-gray-900 bg-white focus:border-indigo-500 focus:outline-none"
+                            value={quote.quoteValidity || ''}
+                            onChange={(e) => updateQuote(idx, 'quoteValidity', e.target.value)}
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2106,9 +2316,17 @@ Press Enter for new line"
               </div>
             )}
 
-            {/* Advisor Comment */}
+            {/* Remarks + Advisor Comment — both optional, printed under the table */}
             <div className="mb-6 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
-              <label className="block text-sm font-bold mb-2 text-gray-800">Advisor Comment</label>
+              <label className="block text-sm font-bold mb-2 text-gray-800">Remarks <span className="font-normal text-gray-500">(optional)</span></label>
+              <textarea
+                className="w-full p-3 mb-4 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-yellow-500 focus:outline-none"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={2}
+                placeholder="Any remarks to print on the comparison — left off the document when empty"
+              />
+              <label className="block text-sm font-bold mb-2 text-gray-800">Advisor Comment <span className="font-normal text-gray-500">(optional)</span></label>
               <textarea
                 className="w-full p-3 border-2 border-gray-300 rounded text-gray-900 bg-white focus:border-yellow-500 focus:outline-none"
                 value={advisorComment}
