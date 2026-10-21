@@ -309,10 +309,13 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
 };
 
 // ============ UTILITY FUNCTIONS ============
+// Lines quoted without VAT: no VAT is added, and none is shown on the form or
+// the comparison.
+const isVatFreeLine = (lineValue: string) => lineValue === 'glpa' || lineValue === 'marine-cargo';
+
 const calculateVAT = (premium: number, policyFee: number = 0, insuranceLine?: string) => {
   const subtotal = premium + policyFee;
-  // No VAT for GLPA insurance
-  const vatRate = insuranceLine === 'glpa' ? 0 : 0.05;
+  const vatRate = insuranceLine && isVatFreeLine(insuranceLine) ? 0 : 0.05;
   const vat = subtotal * vatRate;
   const total = subtotal + vat;
   return { vat: parseFloat(vat.toFixed(2)), total: parseFloat(total.toFixed(2)) };
@@ -616,8 +619,8 @@ const iconFor = (label: string) => {
 
 // Builds the <tbody> of the printed comparison table. Rows are assembled first
 // and numbered afterwards, so inserting the travel benefits (or skipping the VAT
-// row for GLPA) can never desync the S.No column.
-const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTravel: boolean) => {
+// row for a VAT-free line) can never desync the S.No column.
+const buildComparisonRows = (comparison: SavedComparison, isVatFree: boolean, isTravel: boolean) => {
   const columnCount = comparison.quotes.length;
 
   type Row = {
@@ -666,7 +669,7 @@ const buildComparisonRows = (comparison: SavedComparison, isGLPA: boolean, isTra
     { label: 'Policy Fee (AED)', isMoney: true, values: comparison.quotes.map(q => text(q.policyFee)) }
   );
 
-  if (!isGLPA) {
+  if (!isVatFree) {
     rows.push({ label: 'VAT (5%)', isMoney: true, values: comparison.quotes.map(q => `AED ${q.vat}`) });
   }
 
@@ -1184,9 +1187,13 @@ const buildClientDetails = (comparison: SavedComparison) => {
 };
 
 const buildComparisonDocument = (comparison: SavedComparison, assets: DocumentAssets) => {
+  // Saved records hold the line's label. The GLPA text match also catches
+  // records saved under an older wording of that label.
   const isGLPA = comparison.insuranceLine.includes('GLPA') || comparison.insuranceLine.includes('Group Life');
+  const lineValue = INSURANCE_LINES.find(line => line.label === comparison.insuranceLine)?.value || '';
+  const isVatFree = isGLPA || isVatFreeLine(lineValue);
   const isTravel = comparison.insuranceLine.includes('TRAVEL');
-  const tableBody = buildComparisonRows(comparison, isGLPA, isTravel);
+  const tableBody = buildComparisonRows(comparison, isVatFree, isTravel);
 
   const columnCount = comparison.quotes.length;
   // Insurer columns share whatever the two fixed columns leave, so 2, 3 or 6
@@ -2275,7 +2282,12 @@ Press Enter for new line"
                         </div>
 
                         <div className="bg-indigo-50 p-2 rounded">
-                          {insuranceLine === 'glpa' ? (
+                          {insuranceLine === 'marine-cargo' ? (
+                            <div className="flex justify-between text-sm">
+                              <span className="font-bold text-indigo-700">Total:</span>
+                              <span className="font-bold text-indigo-700">AED {quote.total.toFixed(2)}</span>
+                            </div>
+                          ) : insuranceLine === 'glpa' ? (
                             <>
                               <div className="flex justify-between text-xs mb-1">
                                 <span className="font-bold text-gray-700">VAT:</span>

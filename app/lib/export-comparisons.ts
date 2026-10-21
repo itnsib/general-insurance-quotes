@@ -343,7 +343,7 @@ const buildWorkbook = async (
   const notes: [string, string] = [
     `Period: ${filters.period}  ·  Insurance line: ${filters.insuranceLine}  ·  ` +
       `Search: ${filters.search ? `"${filters.search}"` : 'none'}  ·  ${rows.length} ${noun}${rows.length === 1 ? '' : 's'}`,
-    `Generated ${stamp(new Date())}  ·  Amounts in AED; premiums include policy fee and 5% VAT (no VAT on GLPA)`,
+    `Generated ${stamp(new Date())}  ·  Amounts in AED; premiums include policy fee and 5% VAT (no VAT on GLPA or Marine Cargo)`,
   ];
   addDataSheet(workbook, sheetName, title, columns, rows, notes);
 
