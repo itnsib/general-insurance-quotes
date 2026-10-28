@@ -14,8 +14,9 @@ import { displayRate } from './lib/rate';
 // only Geographical Limits filled in, for the advisor to complete.
 // A label is what a saved record stores (and how it is found again for
 // editing), so these must not be renamed once comparisons exist under them.
+// A line that lists its own `companies` uses those instead.
 const BLANK_LINE_COMPANIES = ['AWNIC', 'ADNTC', 'ARABIA'];
-const BLANK_LINES = [
+const BLANK_LINES: { value: string; label: string; companies?: string[] }[] = [
   { value: 'ear', label: 'Erection All Risk - Single' },
   { value: 'eei', label: 'Electronic Equipment Insurance' },
   { value: 'mb', label: 'Machinery Breakdown' },
@@ -35,7 +36,8 @@ const BLANK_LINES = [
   { value: 'ffl', label: 'Freight Forwarders Liability Insurance' },
   { value: 'cgl', label: 'Commercial General Liability' },
   { value: 'fire', label: 'Fire & Lightning Insurance' },
-  { value: 'ship-repairs', label: 'Ship Repairs Legal Liability' }
+  { value: 'ship-repairs', label: 'Ship Repairs Legal Liability' },
+  { value: 'event-liability', label: 'Event Liability Insurance', companies: ['TOKIO MARINE', 'ARABIA'] }
 ];
 
 const INSURANCE_LINES = [
@@ -298,8 +300,8 @@ const INSURANCE_DEFAULTS: Record<string, any> = {
     ],
     "deductible": "AED 40,000/- each and every claim"
   },
-  ...Object.fromEntries(BLANK_LINES.map(({ value }) => [value, {
-    "companies": BLANK_LINE_COMPANIES,
+  ...Object.fromEntries(BLANK_LINES.map(({ value, companies }) => [value, {
+    "companies": companies ?? BLANK_LINE_COMPANIES,
     "scopeOfCover": "",
     "geographicalLimits": "United Arab Emirates",
     "conditions": [],
